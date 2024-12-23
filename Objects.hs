@@ -10,6 +10,7 @@ map_size :: (Int, Int)
 map_size = (10, 10)
 
 -- Some types
+type Multiplier = Float
 type Time = Integer
 type Damage = Int
 type Health = Damage
@@ -19,16 +20,19 @@ type Inventory = [Item]
 type Coords = (Int, Int)
 type Position = (Coords, Coords)
 
-type Effect = Entity -> Entity
+type Hit = Entity -> Entity
+type Effect = Multiplier -> Entity -> Hit
+type Ability = Entity -> Hit
 
 -- Useful Data types
-data Skill = Offensive { title :: String, func :: Effect } | Defensive { title :: String, func :: Effect }
+data Skill = Offensive { title :: String, func :: Ability } 
+           | Defensive { title :: String, func :: Ability }
 
 data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], name :: String }
             | Player { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], inventory :: Inventory, position :: Position }
 
-data Item = Consumeable { label :: String, charges :: Int, effect :: Effect }
-          | Passive     { label :: String, effect :: Effect }
+data Item = Consumeable { label :: String, charges :: Int, effect :: Hit }
+          | Passive     { label :: String, effect :: Hit }
 
 data Object = None | Wall | Chest { loot :: Inventory }
 
@@ -80,25 +84,21 @@ instance Show Tile where
 
 
 -- Entity updaters
-update :: Entity -> Health -> Attack -> Defence -> Entity
-update (Player _ _ _ sk inv cord) hp atk def = Player hp atk def sk inv cord
-update (Enemy _ _ _ sk nm)   hp atk def = Enemy  hp atk def sk nm
+update :: Health -> Attack -> Defence -> Hit
+update hmod amod dmod (Player hp atk def sk inv cord) = Player hp atk def sk inv cord
+update hmod amod dmod (Enemy hp atk def sk nm)        = Enemy  hp atk def sk nm
 
 -- Base Skills
-heal :: Damage -> Effect
-heal amount target
-    | amount < 0 = error "Healing must be positive!"
-    | otherwise  = update target final (attack target) (defence target)
+heal :: Effect
+heal mult user = update amount 0 0
     where
-        final = amount + health target
+        amount = floor $ min 0 $ mult * fromIntegral (-attack user)
 
 
-deal_damage :: Damage -> Effect
-deal_damage amount target
-    | amount < 0 = error "Damage must be positive!"
-    | otherwise  = update target final (attack target) (defence target)
+deal_damage :: Effect
+deal_damage mult user = update amount 0 0
     where
-        final = max 0 (health target - max 0 (amount - defence target))
+        amount = floor $ max 0 $ mult * fromIntegral (attack user)
 
 -- Inventory Operations
 get_passive :: Inventory -> Inventory
@@ -163,7 +163,7 @@ generate_entity (l1, l2) (g1, g2)
     | randomness < 10 = O Wall
     | randomness < 15 = E $ Enemy 0 0 0 [] "Imp"
     | otherwise       = O None
-    where 
+    where
         randomness  = seed `mod` 100
         seed        = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
         seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
@@ -171,23 +171,23 @@ generate_entity (l1, l2) (g1, g2)
 
 
 generate_room :: Coords -> Room
-generate_room global_coords = 
-    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size] ] 
+generate_room global_coords =
+    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size] ]
                             | a <- [0..fst room_size] ]
 
 generate_map :: Coords -> WorldMap
-generate_map (x, y) = 
+generate_map (x, y) =
     [ [ generate_room (a, b) | b <- [0..x] ] | a <- [0..y] ]
 
 print_room :: Room -> IO()
 print_room []     = do putChar '\n'
 print_room (x:xs) = do
-                putStrLn $ foldr 
+                putStrLn $ foldr
                             ((\el res -> el ++ "   " ++ res) . show) "\n" x
                 print_room xs
 
 get_room :: Coords -> WorldMap -> Room
-get_room pos@(x, y) world 
+get_room pos@(x, y) world
     | is_inside pos map_size = world !! y !! x
     | otherwise              = error "Out of bounds"
 

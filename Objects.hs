@@ -9,40 +9,47 @@ room_size = (5, 5)
 map_size :: (Int, Int)
 map_size = (10, 10)
 
--- Some types
-type Multiplier = Float
-type Time = Integer
-type Damage = Int
-type Health = Damage
-type Attack = Damage
-type Defence = Damage
-type Inventory = [Item]
-type Coords = (Int, Int)
-type Position = (Coords, Coords)
+-- Types for various properties of the game
+type Multiplier = Float                   -- Used for scaling effects
+type Time = Integer                       -- Time type for random number generation
+type Damage = Int                         -- Represents attack damage
+type Health = Damage                      -- Alias for health, as it relates to damage
+type Attack = Damage                      -- Alias for attack stats
+type Defence = Damage                     -- Alias for defense stats
+type Inventory = [Item]                   -- List of items held by an entity
+type Coords = (Int, Int)                  -- A pair representing coordinates (x, y)
+type Position = (Coords, Coords)          -- Global and local coordinates
+type Scene = (Entity, WorldMap)           -- A scene with one entity and the world map
+type Hit = Entity -> Entity               -- A transformation function for entities
+type Effect = Multiplier -> Entity -> Hit -- Effects modify entities based on a multiplier
+type Ability = Entity -> Hit              -- Abilities define specific entity actions
+type History = [String]                   -- Log of past events or actions
 
-type Hit = Entity -> Entity
-type Effect = Multiplier -> Entity -> Hit
-type Ability = Entity -> Hit
-
--- Useful Data types
-data Skill = Offensive { title :: String, func :: Ability } 
+-- Definition of skills as offensive or defensive abilities
+data Skill = Offensive { title :: String, func :: Ability }
            | Defensive { title :: String, func :: Ability }
 
+-- The main game entities: enemies and the player
 data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], name :: String }
             | Player { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], inventory :: Inventory, position :: Position }
 
+-- Items the player uses
 data Item = Consumeable { label :: String, charges :: Int, effect :: Hit }
           | Passive     { label :: String, effect :: Hit }
 
+-- Objects present on the map
 data Object = None | Wall | Chest { loot :: Inventory }
 
+-- Tiles are either objects or entities
 data Tile = O Object | E Entity
 
+-- A room is a grid of tiles
 type Room = [[Tile]]
 
+-- A world map is a grid of rooms
 type WorldMap = [[Room]]
 
--- Redefine classes
+-- Redefine classes to provide custom string representations
 instance Show Skill where
     show :: Skill -> String
     show (Offensive t _) = "Attack Skill: "  ++ t
@@ -54,11 +61,6 @@ instance Show Item where
                               ++ " | Charges: " ++ show c
     show (Passive l eff)       = "Item: " ++ show l
 
-instance Eq Item where
-    (==) :: Item -> Item -> Bool
-    (Consumeable l1 _ _) == (Consumeable l2 _ _) = l1 == l2
-    (Passive l1 _)       == (Passive l2 _)       = l1 == l2
-    (Consumeable {})     == (Passive _ _)        = False
 
 instance Show Entity where
     show :: Entity -> String
@@ -80,8 +82,6 @@ instance Show Tile where
     show (O (Chest {}))  = "C"
     show (O None)        = "."
     show (O Wall)        = "#"
-
-
 
 -- Entity updaters
 update :: Health -> Attack -> Defence -> Hit
@@ -122,12 +122,6 @@ clear_used = filter $ not . is_used
         is_used (Consumeable _ charges _) = charges == 0
         is_used _                         = False
 
-remove_item :: Item -> Inventory -> Inventory
-remove_item _ [] = []
-remove_item itm (x:xs)
-    | itm /= x = x : remove_item itm xs
-    | itm == x = xs
-
 use_item :: Int -> Inventory -> Inventory
 use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx+1) inv
     where
@@ -138,7 +132,8 @@ use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx+1) inv
 random_skill :: [Skill] -> Skill
 random_skill sk = sk !! fromIntegral (random_range 0 $ toInteger (length sk))
 
--- Using the formula in this article: https://en.wikipedia.org/wiki/Random_number_generation
+-- Using the formula in this article: 
+-- https://en.wikipedia.org/wiki/Random_number_generation
 rand :: Time -> Time
 rand seed = (1103515245 * seed + 12345) `mod` 2147483647
 
@@ -172,29 +167,52 @@ generate_entity (l1, l2) (g1, g2)
 
 generate_room :: Coords -> Room
 generate_room global_coords =
-    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size] ]
-                            | a <- [0..fst room_size] ]
+    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size - 1] ]
+                            | a <- [0..fst room_size - 1] ]
 
 generate_map :: Coords -> WorldMap
 generate_map (x, y) =
-    [ [ generate_room (a, b) | b <- [0..x] ] | a <- [0..y] ]
+    [ [ generate_room (a, b) | b <- [0..x-1] ] | a <- [0..y-1] ]
 
-print_room :: Room -> IO()
-print_room []     = do putChar '\n'
-print_room (x:xs) = do
-                putStrLn $ foldr
-                            ((\el res -> el ++ "   " ++ res) . show) "\n" x
-                print_room xs
-
+-- If pos is outside world, it is clamped inside to the nearest room
 get_room :: Coords -> WorldMap -> Room
-get_room pos@(x, y) world
-    | is_inside pos map_size = world !! y !! x
-    | otherwise              = error "Out of bounds"
+get_room pos@(x, y) world = world !! clamp_y !! clamp_x
+                            where
+                                clamp_x = max 0 $ min x (fst room_size - 1)
+                                clamp_y = max 0 $ min y (snd room_size - 1)
+
+-- If pos is outside, it wraps around the room
+get_tile :: Coords -> Room -> Tile
+get_tile pos@(x, y) room = room !! clamp_y !! clamp_x
+                            where
+                                clamp_x = x `mod` fst room_size
+                                clamp_y = y `mod` snd room_size
 
 is_inside :: Coords -> Coords -> Bool
 is_inside (x, y) (a, b) = x < a && y < b && x >= 0 && y >=0
 
-get_tile :: Coords -> Room -> Tile
-get_tile pos@(x, y) room
-    | is_inside pos room_size = room !! y !! x
-    | otherwise               = error "Out of bounds!"
+-- Movement
+direct :: Coords -> Coords -> Coords
+direct (x, y) (a, b) = (x + a, y + b)
+
+-- Dir is one of: down(0, 1) left(1, 0) up(0, -1) right(-1, 0)
+move :: Coords -> Entity -> WorldMap -> Entity
+move dir pl@(Player hp atk def sk inv (global, local)) wd
+    | is_inside new_local room_size 
+    && can_step new_local global wd = 
+        Player hp atk def sk inv (global, new_local)
+    | is_inside new_global map_size 
+    && not (is_inside new_local room_size)
+    && can_step (clamp new_local) new_global wd =
+        Player hp atk def sk inv (new_global, clamp new_local)
+    | otherwise = pl
+    where
+        new_local  = local `direct` dir
+        new_global = global `direct` dir
+        clamp (x, y)  = (x `mod` fst room_size, y `mod` snd room_size)
+
+can_step :: Coords -> Coords -> WorldMap -> Bool
+can_step local global wd = not $ is_wall (get_tile local $ get_room global wd)
+    where
+        is_wall (O Wall) = True
+        is_wall _        = False

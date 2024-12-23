@@ -19,4 +19,4 @@ game_loop time state = do
             else game_loop (time + 1) st
 
 player :: Entity
-player = Player 10 3 1 [] []
+player = Player 10 3 1 [] [] ((0, 0), (0, 0))

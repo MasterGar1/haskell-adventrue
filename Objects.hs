@@ -2,6 +2,13 @@
 {-# HLINT ignore "Use camelCase" #-}
 module Objects where
 
+-- Some constants
+room_size :: (Int, Int)
+room_size = (5, 5)
+
+map_size :: (Int, Int)
+map_size = (10, 10)
+
 -- Some types
 type Time = Integer
 type Damage = Int
@@ -9,6 +16,8 @@ type Health = Damage
 type Attack = Damage
 type Defence = Damage
 type Inventory = [Item]
+type Coords = (Int, Int)
+type Position = (Coords, Coords)
 
 type Effect = Entity -> Entity
 
@@ -16,46 +25,63 @@ type Effect = Entity -> Entity
 data Skill = Offensive { title :: String, func :: Effect } | Defensive { title :: String, func :: Effect }
 
 data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], name :: String }
-            | Player { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], inventory :: Inventory }
+            | Player { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], inventory :: Inventory, position :: Position }
 
 data Item = Consumeable { label :: String, charges :: Int, effect :: Effect }
           | Passive     { label :: String, effect :: Effect }
 
-data Interactable = None | Chest { loot :: Inventory }
+data Object = None | Wall | Chest { loot :: Inventory }
 
+data Tile = O Object | E Entity
 
+type Room = [[Tile]]
+
+type WorldMap = [[Room]]
 
 -- Redefine classes
 instance Show Skill where
+    show :: Skill -> String
     show (Offensive t _) = "Attack Skill: "  ++ t
     show (Defensive t _) = "Defence Skill: " ++ t
 
 instance Show Item where
+    show :: Item -> String
     show (Consumeable l c eff) = "Item: " ++ show l
                               ++ " | Charges: " ++ show c
     show (Passive l eff)       = "Item: " ++ show l
 
 instance Eq Item where
+    (==) :: Item -> Item -> Bool
     (Consumeable l1 _ _) == (Consumeable l2 _ _) = l1 == l2
     (Passive l1 _)       == (Passive l2 _)       = l1 == l2
     (Consumeable {})     == (Passive _ _)        = False
 
 instance Show Entity where
+    show :: Entity -> String
     show (Enemy h a d s n)    = "Name: " ++ n ++ ['\n']
                              ++ "Health: " ++ show h
                              ++ " | Attack: " ++ show a
                              ++ " | Defence: " ++ show d ++ ['\n']
                              ++ "Skills: " ++ show (map title s)
-    show (Player h a d s inv) = "Health: " ++ show h
+    show (Player h a d s inv _) = "Health: " ++ show h
                              ++ " | Attack: " ++ show a
                              ++ " | Defence: " ++ show d ++ ['\n']
                              ++ "Inventory: " ++ show inv ++ ['\n']
                              ++ "Skills: " ++ show (map title s)
-                               
+
+instance Show Tile where
+    show :: Tile -> String
+    show (E (Enemy {}))  = "E"
+    show (E (Player {})) = "P"
+    show (O (Chest {}))  = "C"
+    show (O None)        = "."
+    show (O Wall)        = "#"
+
+
 
 -- Entity updaters
 update :: Entity -> Health -> Attack -> Defence -> Entity
-update (Player _ _ _ sk inv) hp atk def = Player hp atk def sk inv
+update (Player _ _ _ sk inv cord) hp atk def = Player hp atk def sk inv cord
 update (Enemy _ _ _ sk nm)   hp atk def = Enemy  hp atk def sk nm
 
 -- Base Skills
@@ -118,3 +144,57 @@ rand seed = (1103515245 * seed + 12345) `mod` 2147483647
 
 random_range :: Integer -> Integer -> Time
 random_range a b = (rand 3232 `mod` (b - a)) + a
+
+-- Map
+{-
+    To make a simple bijection seed_? : N^2 -> N,
+    We can take inspiration from the triangle numbers' formula:
+    S(k) = k * (k+1) / 2
+    If we plug k = a + b, then:
+    seed_?(a, b) = (a + b) * (a + b + 1) / 2
+    But then seed_?(a, b) = seed_?(b, a) ~> We will use either a or b as offset
+    => seed_?(a, b) = (a + b) * (a + b + 1) / 2 + a, which is a bijection,
+    thus each pair (a, b) has a single mapping in N
+    Note: This does not generate truly random rooms, as they can be predicted
+-}
+generate_entity :: Coords -> Coords -> Tile
+generate_entity (l1, l2) (g1, g2)
+    | randomness < 2  = O $ Chest []
+    | randomness < 10 = O Wall
+    | randomness < 15 = E $ Enemy 0 0 0 [] "Imp"
+    | otherwise       = O None
+    where 
+        randomness  = seed `mod` 100
+        seed        = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
+        seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
+        seed_local  = (l1 + l2) * (l1 + l2 + 1) `div` 2 + l1
+
+
+generate_room :: Coords -> Room
+generate_room global_coords = 
+    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size] ] 
+                            | a <- [0..fst room_size] ]
+
+generate_map :: Coords -> WorldMap
+generate_map (x, y) = 
+    [ [ generate_room (a, b) | b <- [0..x] ] | a <- [0..y] ]
+
+print_room :: Room -> IO()
+print_room []     = do putChar '\n'
+print_room (x:xs) = do
+                putStrLn $ foldr 
+                            ((\el res -> el ++ "   " ++ res) . show) "\n" x
+                print_room xs
+
+get_room :: Coords -> WorldMap -> Room
+get_room pos@(x, y) world 
+    | is_inside pos map_size = world !! y !! x
+    | otherwise              = error "Out of bounds"
+
+is_inside :: Coords -> Coords -> Bool
+is_inside (x, y) (a, b) = x < a && y < b && x >= 0 && y >=0
+
+get_tile :: Coords -> Room -> Tile
+get_tile pos@(x, y) room
+    | is_inside pos room_size = room !! y !! x
+    | otherwise               = error "Out of bounds!"

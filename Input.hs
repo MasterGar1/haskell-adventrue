@@ -20,19 +20,23 @@ parse_input line st sc@(pl, wd) hs
             _       -> output invalid_input ret
     | st == Fight   =
         case line of
-            _      -> output invalid_input ret
+            _      -> output "Fight" ret
     | st == Help    =
         case line of
-            "combat" -> output help_combat (Help, sc, hlog)
-            "exit"   -> do
+            "combat"  -> output help_combat (Help, sc, hlog)
+            "explore" -> output help_explore (Help, sc, hlog)
+            "exit"    -> do
                           redraw_room sc
                           return (Explore, sc, hs)
-            _        -> do
+            _         -> do
                           r <- output help (Help, sc, hs)
                           output invalid_input r
     | st == Start    =
         case line of
-            "start" -> output "Game Started!" (Explore, sc, hs)
+            "start" -> do
+                        r <- output "Game Started!" (Explore, sc, hs)
+                        redraw_room sc
+                        return r
             _       -> output invalid_input (Start, sc, hs)
     | otherwise     = error "Invalid State"
     where
@@ -41,9 +45,8 @@ parse_input line st sc@(pl, wd) hs
         hlog    = line : hs
 
 parse_event :: Tile -> State
-parse_event (E _)          = Fight
-parse_event (O (Chest _))  = Explore
-parse_event _              = Explore
+parse_event (E _) = Fight
+parse_event _     = Explore
 
 output :: String -> (State, Scene, History) -> IO (State, Scene, History)
 output line sc = do
@@ -53,11 +56,16 @@ output line sc = do
 move_player :: Coords -> (State, Scene, History) -> IO (State, Scene, History)
 move_player dir (st, sc@(pl, wd), hs) = do
                          let player = move dir pl wd
-                         redraw_room (player, wd)
-                         if position pl == position player
-                            then putStrLn "You can't go there!"
-                            else putStr ""
-                         return (st, (player, wd), hs)
+                         let state = parse_event $ current_tile (position player) wd
+                         if state == Fight
+                            then 
+                                output "You have encountered an enemy!" (state, (player, wd), hs)
+                            else do
+                                redraw_room (player, wd)
+                                if position pl == position player
+                                    then putStrLn "You can't go there!"
+                                    else putStr ""
+                                return (state, (player, wd), hs)
 
 
 redraw_room :: Scene -> IO()
@@ -94,14 +102,26 @@ help = "()================================()\n"
     ++ "()================================()\n"
     ++ " | What do you need help with?    | \n"
     ++ " | - Combat                       | \n"
-    ++ " | - Exploration                  | \n"
+    ++ " | - Explore                      | \n"
     ++ " | - Controls                     | \n"
     ++ " | - Exit                         | \n"
     ++ " +--------------------------------+ \n"
 
 help_combat :: String
-help_combat = " Combat "
-
+help_combat = "()=================================================()\n"  
+           ++ "|| _______  _____  _______ ______  _______ _______ ||\n"
+           ++ "|| |       |     | |  |  | |_____] |_____|    |    ||\n" 
+           ++ "|| |_____  |_____| |  |  | |_____] |     |    |    ||\n"
+           ++ "||                                                 ||\n"
+           ++ "()=================================================()\n"
+                
+help_explore :: String
+help_explore = "()========================================================()\n"   
+            ++ "|| _______ _     _  _____          _____   ______ _______ ||\n"
+            ++ "|| |______  \\___/  |_____] |      |     | |_____/ |______ ||\n"
+            ++ "|| |______ _/   \\_ |       |_____ |_____| |    \\_ |______ ||\n"
+            ++ "||                                                        ||\n"
+            ++ "()========================================================()\n"
 
 invalid_input :: String
 invalid_input = "Invalid Input!"

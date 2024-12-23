@@ -8,7 +8,7 @@ import Props
 main :: IO()
 main = do
     putStrLn start 
-    game_loop 0 Start (player, generate_map map_size) []
+    game_loop 0 Explore (player, generate_map map_size) []
 
 game_loop :: Time -> State -> Scene -> History -> IO()
 game_loop time state scene@(actor, world) history = do

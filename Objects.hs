@@ -188,6 +188,9 @@ get_tile pos@(x, y) room = room !! clamp_y !! clamp_x
                                 clamp_x = x `mod` fst room_size
                                 clamp_y = y `mod` snd room_size
 
+current_tile :: Position -> WorldMap -> Tile
+current_tile (global, local) wd = get_tile local $ get_room global wd
+
 is_inside :: Coords -> Coords -> Bool
 is_inside (x, y) (a, b) = x < a && y < b && x >= 0 && y >=0
 

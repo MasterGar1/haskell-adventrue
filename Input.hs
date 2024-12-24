@@ -29,11 +29,19 @@ parse_input line st sc@(pl, wd) hs tm
                          case chosen_skill of
                             (Offensive name func) -> do
                                     let new_enemy = func pl enemy
-                                    let world = update_tile (position pl) (E new_enemy) wd
-                                    output (combat_screen (current_tile (position pl) wd) pl) (Fight, (pl, world), hlog, time)
+                                    if health new_enemy <= 0
+                                        then do
+                                                let new_world = update_tile (position pl) (O None) wd
+                                                r <- output "You defeated the enemy!" (Explore, (pl, new_world), hlog, time)
+                                                output (combat_screen (current_tile (position pl) new_world) pl) r
+                                        else do
+                                            (player, enemy) <- enemy_attack pl new_enemy tm
+                                            let world = update_tile (position player) (E enemy) wd
+                                            output (combat_screen (current_tile (position player) wd) player) (Fight, (player, world), hlog, time)
                             (Defensive name func) -> do
                                     let new_player = func pl pl
-                                    output (combat_screen (current_tile (position pl) wd) new_player) (Fight, (new_player, wd), hlog, time)
+                                    (player, enemy) <- enemy_attack new_player enemy tm
+                                    output (combat_screen (current_tile (position player) wd) player) (Fight, (player, wd), hlog, time)
             _      -> do
                        r <- output invalid_input ret_log
                        output (combat_screen (current_tile (position pl) wd) pl) r
@@ -89,6 +97,20 @@ choose_attack skills = do
                                 putStrLn invalid_input
                                 choose_attack skills
                         where is_digit c = c >= '0' && c <= '9'
+
+enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
+enemy_attack pl en@(Enemy hp atk def sk _) seed = do
+    let idx = random_index (length sk) seed
+    let chosen_skill = pick_random sk $ fromInteger seed
+    putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
+    case chosen_skill of
+        (Offensive name func) -> do
+            let new_player = func en pl
+            return (new_player, en)
+        (Defensive name func) -> do
+            let new_enemy = func en en
+            return (pl, new_enemy)
+
 
 move_player :: Coords -> GameData -> IO GameData
 move_player dir (st, sc@(pl, wd), hs, tm) = do

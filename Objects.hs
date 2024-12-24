@@ -38,7 +38,7 @@ data Item = Consumeable { label :: String, charges :: Int, effect :: Hit }
           | Passive     { label :: String, effect :: Hit }
 
 -- Objects present on the map
-data Object = None | Wall | Chest { loot :: Inventory }
+data Object = None | Wall | Chest { loot :: Item }
 
 -- Tiles are either objects or entities
 data Tile = O Object | E Entity
@@ -137,50 +137,25 @@ use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx+1) inv
         after (Consumeable l c e) = Consumeable l (c - 1) e
         after (Passive l e)       = Passive     l e
 
-random_skill :: [Skill] -> Skill
-random_skill sk = sk !! fromIntegral (random_range 0 $ toInteger (length sk))
+random_index :: Int -> Time -> Int
+random_index len seed = if len <= 1 
+                            then 0 
+                            else fromIntegral $ rand seed `mod` toInteger len
+
+pick_random :: [a] -> Int -> a
+pick_random lst seed = lst !! idx
+    where idx = random_index (length lst) $ toInteger seed
 
 -- Using the formula in this article: 
 -- https://en.wikipedia.org/wiki/Random_number_generation
 rand :: Time -> Time
 rand seed = (1103515245 * seed + 12345) `mod` 2147483647
 
-random_range :: Integer -> Integer -> Time
-random_range a b = (rand 3232 `mod` (b - a)) + a
+random_range :: Time -> Integer -> Integer -> Time
+random_range seed a b = if b - a <= 0 then 0 else (rand seed `mod` (b - a)) + a
 
 -- Map
-{-
-    To make a simple bijection seed_? : N^2 -> N,
-    We can take inspiration from the triangle numbers' formula:
-    S(k) = k * (k+1) / 2
-    If we plug k = a + b, then:
-    seed_?(a, b) = (a + b) * (a + b + 1) / 2
-    But then seed_?(a, b) = seed_?(b, a) ~> We will use either a or b as offset
-    => seed_?(a, b) = (a + b) * (a + b + 1) / 2 + a, which is a bijection,
-    thus each pair (a, b) has a single mapping in N
-    Note: This does not generate truly random rooms, as they can be predicted
--}
-generate_entity :: Coords -> Coords -> Tile
-generate_entity (l1, l2) (g1, g2)
-    | randomness < 2  = O $ Chest []
-    | randomness < 10 = O Wall
-    | randomness < 15 = E $ Enemy 100 0 0 [] "Imp"
-    | otherwise       = O None
-    where
-        randomness  = seed `mod` 100
-        seed        = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
-        seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
-        seed_local  = (l1 + l2) * (l1 + l2 + 1) `div` 2 + l1
 
-
-generate_room :: Coords -> Room
-generate_room global_coords =
-    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size - 1] ]
-                            | a <- [0..fst room_size - 1] ]
-
-generate_map :: Coords -> WorldMap
-generate_map (x, y) =
-    [ [ generate_room (a, b) | b <- [0..x-1] ] | a <- [0..y-1] ]
 
 -- If pos is outside world, it is clamped inside to the nearest room
 get_room :: Coords -> WorldMap -> Room

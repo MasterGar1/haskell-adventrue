@@ -3,6 +3,40 @@
 module Props where
 import Objects
 
+-- Map
+{-
+    To make a simple bijection seed_? : N^2 -> N,
+    We can take inspiration from the triangle numbers' formula:
+    S(k) = k * (k+1) / 2
+    If we plug k = a + b, then:
+    seed_?(a, b) = (a + b) * (a + b + 1) / 2
+    But then seed_?(a, b) = seed_?(b, a) ~> We will use either a or b as offset
+    => seed_?(a, b) = (a + b) * (a + b + 1) / 2 + a, which is a bijection,
+    thus each pair (a, b) has a single mapping in N
+    Note: This does not generate truly random rooms, as they can be predicted
+-}
+generate_entity :: Coords -> Coords -> Tile
+generate_entity (l1, l2) (g1, g2)
+    | randomness < 2  = O $ Chest $ pick_random item_pool seed
+    | randomness < 10 = O Wall
+    | randomness < 15 = E $ pick_random enemy_pool seed
+    | otherwise       = O None
+    where
+        randomness  = seed `mod` 100
+        seed        = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
+        seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
+        seed_local  = (l1 + l2) * (l1 + l2 + 1) `div` 2 + l1
+
+
+generate_room :: Coords -> Room
+generate_room global_coords =
+    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size - 1] ]
+                            | a <- [0..fst room_size - 1] ]
+
+generate_map :: Coords -> WorldMap
+generate_map (x, y) =
+    [ [ generate_room (a, b) | b <- [0..x-1] ] | a <- [0..y-1] ]
+
 -- Entities
 player :: Entity
 player = Player 10 2 1 [basic_attack] [sword] ((0, 0), (2, 2))
@@ -11,7 +45,7 @@ enemy_pool :: [Entity]
 enemy_pool = [imp]
 
 imp :: Entity
-imp = Enemy 4 1 0 [basic_attack] "Imp"
+imp = Enemy 4 2 0 [basic_attack] "Imp"
 
 -- Skills
 skill_pool :: [Skill]
@@ -22,17 +56,6 @@ basic_attack = Offensive "Attack" (deal_damage 1)
 
 basic_heal :: Skill
 basic_heal = Defensive "Heal" (heal 0.7)
-
--- >>> basic_attack player imp
--- Couldn't match expected type `Entity -> Entity -> t_a5nFz[sk:1]'
---             with actual type `Skill'
--- The function `basic_attack' is applied to two value arguments,
---   but its type `Skill' has none
--- In the expression: basic_attack player imp
--- In an equation for `it_a5nE0': it_a5nE0 = basic_attack player imp
--- Relevant bindings include
---   it_a5nE0 :: t_a5nFz[sk:1]
---     (bound at C:\Users\garig\Desktop\UNI\FP\haskell-adventrue\Props.hs:25:2)
 
 -- Items
 item_pool :: [Item]

@@ -22,7 +22,21 @@ parse_input line st sc@(pl, wd) hs tm
             _       -> output invalid_input ret
     | st == Fight   =
         case line of
-            _      -> output "Fight" ret
+            "attack" -> do
+                         chosen_skill <- choose_attack (skills pl)
+                         let (E enemy) = current_tile (position pl) wd
+                         putStrLn $ "You used " ++ title chosen_skill ++ "!"
+                         case chosen_skill of
+                            (Offensive name func) -> do
+                                    let new_enemy = func pl enemy
+                                    let world = update_tile (position pl) (E new_enemy) wd
+                                    output (combat_screen (current_tile (position pl) wd) pl) (Fight, (pl, world), hlog, time)
+                            (Defensive name func) -> do
+                                    let new_player = func pl pl
+                                    output (combat_screen (current_tile (position pl) wd) new_player) (Fight, (new_player, wd), hlog, time)
+            _      -> do
+                       r <- output invalid_input ret_log
+                       output (combat_screen (current_tile (position pl) wd) pl) r
     | st == Help    =
         case line of
             "combat"  -> output help_combat (Help, sc, hlog, time)
@@ -56,12 +70,32 @@ output line sc = do
                    putStrLn line
                    return sc
 
+choose_attack :: [Skill] -> IO Skill
+choose_attack skills = do
+                        putStrLn "Choose an attack:"
+                        putStrLn $ concat [ show i ++ ". " ++ show skill ++ ['\n'] | (i, skill) <- zip [1..] skills ]
+                        putStr "> "
+                        line <- getLine
+                        if all is_digit line && not (null line)
+                            then do
+                                let index = read line :: Int
+                                if index < 1 || index > length skills
+                                    then do
+                                        putStrLn invalid_input
+                                        choose_attack skills
+                                    else
+                                        return $ skills !! (index - 1)
+                            else do
+                                putStrLn invalid_input
+                                choose_attack skills
+                        where is_digit c = c >= '0' && c <= '9'
+
 move_player :: Coords -> GameData -> IO GameData
 move_player dir (st, sc@(pl, wd), hs, tm) = do
                          let player = move dir pl wd
                          let state = parse_event $ current_tile (position player) wd
                          if state == Fight
-                            then 
+                            then
                                 output (combat_screen (current_tile (position player) wd) player) (state, (player, wd), hs, tm)
                             else do
                                 redraw_room (player, wd)
@@ -131,23 +165,23 @@ combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
                "()========================================================()\n"
             ++ "||          _______ _____  ______ _     _ _______         ||\n"
             ++ "||          |______   |   |  ____ |_____|    |            ||\n"
-            ++ "||          |       __|__ |_____| |     |    |            ||\n"                        
+            ++ "||          |       __|__ |_____| |     |    |            ||\n"     
             ++ "()========================================================()\n"
-            ++ "|| Enemy Stats:                                           ||\n"
-            ++ "|| Name: " ++ name ++ replicate (49 - length name) ' ' ++ "||\n"
-            ++ "|| HP: " ++ show hp ++ replicate (51 - length (show hp)) ' ' ++ "||\n"
-            ++ "|| ATK: " ++ show atk ++ replicate (50 - length (show atk)) ' ' ++ "||\n"
-            ++ "|| DEF: " ++ show def ++ replicate (50 - length (show def)) ' ' ++ "||\n"
-            ++ "()========================================================()\n"
-            ++ "|| Your Stats:                                            ||\n"
-            ++ "|| HP: " ++ show hpp ++ replicate (51 - length (show hpp)) ' ' ++ "||\n"
-            ++ "|| ATK: " ++ show atkp ++ replicate (50 - length (show atkp)) ' ' ++ "||\n"
-            ++ "|| DEF: " ++ show defp ++ replicate (50 - length (show defp)) ' ' ++ "||\n"
+            ++ "|| Enemy Stats:              || Your Stats:               ||\n"
+            ++ "|| Name: " ++ name ++ replicate (20 - length name) ' ' ++ "||"
+            ++ " HP: " ++ show hpp ++ replicate (22 - length (show hpp)) ' ' ++ "||\n"
+            ++ "|| HP: " ++ show hp ++ replicate (22 - length (show hp)) ' ' ++ "||"
+            ++ " ATK: " ++ show atkp ++ replicate (21 - length (show atkp)) ' ' ++ "||\n"
+            ++ "|| ATK: " ++ show atk ++ replicate (21 - length (show atk)) ' ' ++ "||"
+            ++ " DEF: " ++ show defp ++ replicate (21 - length (show defp)) ' ' ++ "||\n"
+            ++ "|| DEF: " ++ show def ++ replicate (21 - length (show def)) ' ' ++ "||"
+            ++ replicate 27 ' ' ++ "||\n"
             ++ "()========================================================()\n"
             ++ " | What will you do?                                      | \n"
             ++ " | - Attack                                               | \n"
-            ++ " | - Use Item                                             | \n"
+            ++ " | - Item                                                 | \n"
             ++ " +--------------------------------------------------------+ \n"
-
+-- >>> length "======================================================"
+-- 54
 invalid_input :: String
 invalid_input = "Invalid Input!"

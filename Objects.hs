@@ -83,22 +83,30 @@ instance Show Tile where
     show (O None)        = "."
     show (O Wall)        = "#"
 
--- Entity updaters
+-- Entity updater
 update :: Health -> Attack -> Defence -> Hit
-update hmod amod dmod (Player hp atk def sk inv cord) = Player hp atk def sk inv cord
-update hmod amod dmod (Enemy hp atk def sk nm)        = Enemy  hp atk def sk nm
+update hmod amod dmod (Player hp atk def sk inv cord) = Player hp' atk' def' sk inv cord
+    where
+        hp' = hp + hmod
+        atk' = atk + amod
+        def' = def + dmod
+update hmod amod dmod (Enemy hp atk def sk nm)        = Enemy  hp' atk' def' sk nm
+    where
+            hp' = hp + hmod
+            atk' = atk + amod
+            def' = def + dmod
 
 -- Base Skills
 heal :: Effect
 heal mult user = update amount 0 0
     where
-        amount = floor $ min 0 $ mult * fromIntegral (-attack user)
+        amount = floor $ max 0 $ mult * fromIntegral (attack user)
 
 
 deal_damage :: Effect
 deal_damage mult user = update amount 0 0
     where
-        amount = floor $ max 0 $ mult * fromIntegral (attack user)
+        amount = floor $ min 0 $ mult * fromIntegral (-attack user)
 
 -- Inventory Operations
 get_passive :: Inventory -> Inventory
@@ -156,7 +164,7 @@ generate_entity :: Coords -> Coords -> Tile
 generate_entity (l1, l2) (g1, g2)
     | randomness < 2  = O $ Chest []
     | randomness < 10 = O Wall
-    | randomness < 15 = E $ Enemy 0 0 0 [] "Imp"
+    | randomness < 15 = E $ Enemy 100 0 0 [] "Imp"
     | otherwise       = O None
     where
         randomness  = seed `mod` 100
@@ -191,6 +199,17 @@ get_tile pos@(x, y) room = room !! clamp_y !! clamp_x
 current_tile :: Position -> WorldMap -> Tile
 current_tile (global, local) wd = get_tile local $ get_room global wd
 
+update_tile :: Position -> Tile -> WorldMap -> WorldMap
+update_tile ((g1, g2), (l1, l2)) what wd = take g2 wd ++ 
+                                    [take g1 (wd !! g2) ++ 
+                                        [take l2 (wd !! g2 !! g1) ++ 
+                                            [take l1 (wd !! g2 !! g1 !! l2) 
+                                                ++ [what] 
+                                            ++ drop (l1 + 1) (wd !! g2 !! g1 !! l2)] 
+                                        ++ drop (l2 + 1) (wd !! g2 !! g1)] 
+                                    ++ drop (g1 + 1) (wd !! g2)] 
+                                ++ drop (g2 + 1) wd
+
 is_inside :: Coords -> Coords -> Bool
 is_inside (x, y) (a, b) = x < a && y < b && x >= 0 && y >=0
 
@@ -201,10 +220,10 @@ direct (x, y) (a, b) = (x + a, y + b)
 -- Dir is one of: down(0, 1) left(1, 0) up(0, -1) right(-1, 0)
 move :: Coords -> Entity -> WorldMap -> Entity
 move dir pl@(Player hp atk def sk inv (global, local)) wd
-    | is_inside new_local room_size 
-    && can_step new_local global wd = 
+    | is_inside new_local room_size
+    && can_step new_local global wd =
         Player hp atk def sk inv (global, new_local)
-    | is_inside new_global map_size 
+    | is_inside new_global map_size
     && not (is_inside new_local room_size)
     && can_step (clamp new_local) new_global wd =
         Player hp atk def sk inv (new_global, clamp new_local)
@@ -219,3 +238,6 @@ can_step local global wd = not $ is_wall (get_tile local $ get_room global wd)
     where
         is_wall (O Wall) = True
         is_wall _        = False
+
+-- >>>  generate_map (2, 2)
+-- [[[[C,#,.,.,#],[C,E,.,.,.],[#,.,.,.,.],[.,.,.,C,.],[.,.,.,.,.]],[[#,#,.,.,.],[#,.,.,#,E],[E,.,.,.,.],[.,.,.,.,.],[.,.,C,.,.]]],[[[#,E,.,.,.],[#,.,.,.,.],[.,.,#,E,.],[.,.,.,.,.],[.,.,.,.,#]],[[E,.,.,.,.],[.,.,.,.,.],[.,.,.,.,.],[.,.,.,E,.],[#,E,.,.,.]]]]

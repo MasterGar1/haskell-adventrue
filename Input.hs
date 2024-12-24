@@ -6,13 +6,15 @@ import Objects
 data State = Start | Help | Explore | Fight
     deriving (Eq, Show, Read)
 
-parse_input :: String -> State -> Scene -> History -> IO (State, Scene, History)
-parse_input line st sc@(pl, wd) hs
+type GameData = (State, Scene, History, Time)
+
+parse_input :: String -> State -> Scene -> History -> Time -> IO GameData
+parse_input line st sc@(pl, wd) hs tm
     | line == "quit"= output "Game Exited!" ret
     | line == "log" = output (foldr (\el res ->el ++ " " ++ res) "" hs) ret
     | st == Explore =
         case line of
-            "help"  -> output help (Help, sc, hlog)
+            "help"  -> output help (Help, sc, hlog, time)
             "left"  -> move_player (-1, 0) ret_log
             "right" -> move_player (1, 0) ret_log
             "up"    -> move_player (0, -1) ret_log
@@ -23,49 +25,50 @@ parse_input line st sc@(pl, wd) hs
             _      -> output "Fight" ret
     | st == Help    =
         case line of
-            "combat"  -> output help_combat (Help, sc, hlog)
-            "explore" -> output help_explore (Help, sc, hlog)
+            "combat"  -> output help_combat (Help, sc, hlog, time)
+            "explore" -> output help_explore (Help, sc, hlog, time)
             "exit"    -> do
                           redraw_room sc
-                          return (Explore, sc, hs)
+                          return (Explore, sc, hs, time)
             _         -> do
-                          r <- output help (Help, sc, hs)
+                          r <- output help (Help, sc, hs, time)
                           output invalid_input r
     | st == Start    =
         case line of
             "start" -> do
-                        r <- output "Game Started!" (Explore, sc, hs)
+                        r <- output "Game Started!" (Explore, sc, hs, time)
                         redraw_room sc
                         return r
-            _       -> output invalid_input (Start, sc, hs)
+            _       -> output invalid_input (Start, sc, hs, time)
     | otherwise     = error "Invalid State"
     where
-        ret     = (st, sc, hs)
-        ret_log = (st, sc, hlog)
+        time    = tm + 1
+        ret     = (st, sc, hs, time)
+        ret_log = (st, sc, hlog, time)
         hlog    = line : hs
 
 parse_event :: Tile -> State
 parse_event (E _) = Fight
 parse_event _     = Explore
 
-output :: String -> (State, Scene, History) -> IO (State, Scene, History)
+output :: String -> GameData -> IO GameData
 output line sc = do
                    putStrLn line
                    return sc
 
-move_player :: Coords -> (State, Scene, History) -> IO (State, Scene, History)
-move_player dir (st, sc@(pl, wd), hs) = do
+move_player :: Coords -> GameData -> IO GameData
+move_player dir (st, sc@(pl, wd), hs, tm) = do
                          let player = move dir pl wd
                          let state = parse_event $ current_tile (position player) wd
                          if state == Fight
                             then 
-                                output "You have encountered an enemy!" (state, (player, wd), hs)
+                                output (combat_screen (current_tile (position player) wd) player) (state, (player, wd), hs, tm)
                             else do
                                 redraw_room (player, wd)
                                 if position pl == position player
                                     then putStrLn "You can't go there!"
                                     else putStr ""
-                                return (state, (player, wd), hs)
+                                return (state, (player, wd), hs, tm)
 
 
 redraw_room :: Scene -> IO()
@@ -122,6 +125,29 @@ help_explore = "()========================================================()\n"
             ++ "|| |______ _/   \\_ |       |_____ |_____| |    \\_ |______ ||\n"
             ++ "||                                                        ||\n"
             ++ "()========================================================()\n"
+
+combat_screen :: Tile -> Entity -> String
+combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) = 
+               "()========================================================()\n"
+            ++ "||          _______ _____  ______ _     _ _______         ||\n"
+            ++ "||          |______   |   |  ____ |_____|    |            ||\n"
+            ++ "||          |       __|__ |_____| |     |    |            ||\n"                        
+            ++ "()========================================================()\n"
+            ++ "|| Enemy Stats:                                           ||\n"
+            ++ "|| Name: " ++ name ++ replicate (49 - length name) ' ' ++ "||\n"
+            ++ "|| HP: " ++ show hp ++ replicate (51 - length (show hp)) ' ' ++ "||\n"
+            ++ "|| ATK: " ++ show atk ++ replicate (50 - length (show atk)) ' ' ++ "||\n"
+            ++ "|| DEF: " ++ show def ++ replicate (50 - length (show def)) ' ' ++ "||\n"
+            ++ "()========================================================()\n"
+            ++ "|| Your Stats:                                            ||\n"
+            ++ "|| HP: " ++ show hpp ++ replicate (51 - length (show hpp)) ' ' ++ "||\n"
+            ++ "|| ATK: " ++ show atkp ++ replicate (50 - length (show atkp)) ' ' ++ "||\n"
+            ++ "|| DEF: " ++ show defp ++ replicate (50 - length (show defp)) ' ' ++ "||\n"
+            ++ "()========================================================()\n"
+            ++ " | What will you do?                                      | \n"
+            ++ " | - Attack                                               | \n"
+            ++ " | - Use Item                                             | \n"
+            ++ " +--------------------------------------------------------+ \n"
 
 invalid_input :: String
 invalid_input = "Invalid Input!"

@@ -90,27 +90,29 @@ instance Eq Item where
     _                      == _                      = False
 
 -- Entity updater
-update :: Health -> Attack -> Defence -> Hit
-update hmod amod dmod (Player hp atk def sk inv cord) = Player hp' atk' def' sk inv cord
+update :: Health -> Attack -> Defence -> [Skill] -> Entity -> Entity
+update hmod amod dmod nsk (Player hp atk def sk inv cord) = Player hp' atk' def' sk' inv cord
     where
-        hp' = hp + hmod
+        hp'  = hp + hmod
         atk' = atk + amod
         def' = def + dmod
-update hmod amod dmod (Enemy hp atk def sk nm)        = Enemy  hp' atk' def' sk nm
+        sk'  = sk ++ nsk
+update hmod amod dmod nsk (Enemy hp atk def sk nm)        = Enemy  hp' atk' def' sk' nm
     where
-            hp' = hp + hmod
+            hp'  = hp + hmod
             atk' = atk + amod
             def' = def + dmod
+            sk'  = sk ++ nsk
 
 -- Base Skills
 heal :: Effect
-heal mult user = update amount 0 0
+heal mult user = update amount 0 0 [] 
     where
         amount = floor $ max 0 $ mult * fromIntegral (attack user)
 
 
 deal_damage :: Effect
-deal_damage mult user = update amount 0 0
+deal_damage mult user = update amount 0 0 []
     where
         amount = floor $ min 0 $ mult * fromIntegral (-attack user)
 
@@ -141,6 +143,10 @@ get_passive = filter is_passive
 
 get_consumeable :: Inventory -> Inventory
 get_consumeable = filter $ not . is_passive
+
+gather_passive :: Bool -> Inventory -> Hit
+gather_passive is_off inv = foldr (.) id selected
+    where selected = [ effect itm | itm <- inv, is_passive itm, is_offensive itm == is_off ]
 
 gain_item :: Item -> Inventory -> Inventory
 gain_item itm inv = inv ++ [itm]

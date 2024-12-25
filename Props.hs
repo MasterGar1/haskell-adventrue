@@ -50,11 +50,11 @@ basic_heal :: Skill
 basic_heal = Defensive "Heal" (heal 0.7)
 
 -- Items
-item_pool :: [Item]
+item_pool :: Inventory
 item_pool = [sword, health_potion]
 
 sword :: Item
-sword = Passive "Sword" (update 1 0 0) True
+sword = Passive "Sword" (update 1 0 0 []) True
 
 health_potion :: Item
-health_potion = Consumeable "Health Potion" 1 (update 3 0 0) False
+health_potion = Consumeable "Health Potion" 1 (update 3 0 0 []) False

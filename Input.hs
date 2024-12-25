@@ -27,11 +27,7 @@ parse_input line st sc@(pl, wd) hs tm
             "skills"    -> do
                             putStrLn $ print_skills (skills pl)
                             putStrLn "Type back to return!"
-                            putStr "> "
-                            input <- getLine
-                            if input == "back"
-                                then return ret_log
-                                else output invalid_input ret_log
+                            return ret_log
             _           -> output invalid_input ret
     | st == Fight   =
         case line of
@@ -45,8 +41,7 @@ parse_input line st sc@(pl, wd) hs tm
                          case itm_index of
                              Just idx -> do
                                           putStrLn ("You used " ++ label (inventory pl !! idx) ++ "!")
-                                          let new_player = manip_inventory pl (use_item idx)
-                                          return (Fight, (new_player, wd), hs, tm)
+                                          apply_item idx pl wd hs tm
                              Nothing   -> do
                                            r <- output "Your inventory is empty!" ret
                                            output (combat_screen (current_tile (position pl) wd) pl) r
@@ -77,9 +72,6 @@ parse_input line st sc@(pl, wd) hs tm
         ret_log = (st, sc, hlog, time)
         hlog    = line : hs
 
-parse_event :: Tile -> State
-parse_event (E _) = Fight
-parse_event _     = Explore
 
 event_handler :: Tile -> Entity -> WorldMap -> History -> Time -> IO GameData
 event_handler (E (Enemy hp atk def sk name)) pl wd hlog time = do
@@ -142,23 +134,42 @@ choose_attack skills = do
                                 choose_attack skills
                         where is_digit c = c >= '0' && c <= '9'
 
+enemy_application :: Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
+enemy_application en pl wd hlog tm = do
+    if health en <= 0
+        then do
+            let new_world = update_tile (position pl) (O None) wd
+            r <- output "You defeated the enemy!" (Explore, (pl, new_world), hlog, tm)
+            redraw_room (pl, new_world)
+            return r
+        else do
+            (player, new_enemy) <- enemy_attack pl en tm
+            let world = update_tile (position player) (E new_enemy) wd
+            output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, tm)
+
 use_skill :: Skill -> Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
-use_skill (Offensive name func) pl enemy wd hlog time = do
-        let new_enemy = func pl enemy
-        if health new_enemy <= 0
-            then do
-                let new_world = update_tile (position pl) (O None) wd
-                r <- output "You defeated the enemy!" (Explore, (pl, new_world), hlog, time)
-                redraw_room (pl, new_world)
-                return r
-            else do
-                (player, new_enemy) <- enemy_attack pl new_enemy time
-                let world = update_tile (position player) (E new_enemy) wd
-                output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, time)
-use_skill (Defensive name func) pl enemy wd hlog time = do
-        let new_player = func pl pl
+use_skill (Offensive name sk) pl enemy wd hlog time = do
+        let skill = sk . gather_passive True (inventory pl)
+        let new_enemy = pl `skill` enemy
+        enemy_application new_enemy pl wd hlog time
+
+use_skill (Defensive name skill) pl enemy wd hlog time = do
+        let new_player = pl `skill` pl
         (player, new_enemy) <- enemy_attack new_player enemy time
         output (combat_screen (current_tile (position player) wd) player) (Fight, (player, wd), hlog, time)
+
+apply_item :: Int -> Entity -> WorldMap -> [String] -> Time -> IO GameData
+apply_item idx pl wd hlog time = do
+        let itm = inventory pl !! idx
+        let player = manip_inventory pl (use_item idx)
+        let (E enemy) = current_tile (position player) wd
+        if is_offensive itm
+            then do
+                let new_enemy = itm `effect` enemy
+                enemy_application enemy player wd hlog time
+            else do
+                let new_player = itm `effect` player
+                return (Fight, (new_player, wd), hlog, time)
 
 enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
 enemy_attack pl en@(Enemy hp atk def sk _) seed = do
@@ -166,24 +177,25 @@ enemy_attack pl en@(Enemy hp atk def sk _) seed = do
     let chosen_skill = pick_random sk $ fromInteger seed
     putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
     case chosen_skill of
-        (Offensive name func) -> do
-            let new_player = func en pl
+        (Offensive name skill) -> do
+            let player = gather_passive False (inventory pl) pl
+            let new_player = en `skill` player
             return (new_player, en)
-        (Defensive name func) -> do
-            let new_enemy = func en en
+        (Defensive name skill) -> do
+            let new_enemy = en `skill` en
             return (pl, new_enemy)
-
 
 move_player :: Coords -> GameData -> IO GameData
 move_player dir (st, sc@(pl, wd), hs, tm) = do
                          let player = move dir pl wd
                          let state = parse_event $ current_tile (position player) wd
-                         actor <- event_handler (current_tile (position player) wd) player wd hs tm
                          if position pl == position player
                             then putStrLn "You can't go there!"
                             else putStr ""
                          event_handler (current_tile (position player) wd) player wd hs tm
-
+                where 
+                    parse_event (E (Enemy {})) = Fight
+                    parse_event _              = Explore
 
 redraw_room :: Scene -> IO()
 redraw_room (pl, wd) = do

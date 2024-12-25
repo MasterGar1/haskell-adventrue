@@ -14,37 +14,45 @@ parse_input line st sc@(pl, wd) hs tm
     | line == "log" = output (foldr (\el res ->el ++ " " ++ res) "" hs) ret
     | st == Explore =
         case line of
-            "help"  -> output help (Help, sc, hlog, time)
-            "left"  -> move_player (-1, 0) ret_log
-            "right" -> move_player (1, 0) ret_log
-            "up"    -> move_player (0, -1) ret_log
-            "down"  -> move_player (0, 1) ret_log
-            _       -> output invalid_input ret
+            "help"      -> output help (Help, sc, hlog, time)
+            "left"      -> move_player (-1, 0) ret_log
+            "right"     -> move_player (1, 0) ret_log
+            "up"        -> move_player (0, -1) ret_log
+            "down"      -> move_player (0, 1) ret_log
+            "inventory" -> do
+                            putStrLn $ print_inventory (inventory pl)
+                            putStrLn "Type back to return!"
+                            putStr "> "
+                            return ret_log
+            "skills"    -> do
+                            putStrLn $ print_skills (skills pl)
+                            putStrLn "Type back to return!"
+                            putStr "> "
+                            input <- getLine
+                            if input == "back"
+                                then return ret_log
+                                else output invalid_input ret_log
+            _           -> output invalid_input ret
     | st == Fight   =
         case line of
             "attack" -> do
                          chosen_skill <- choose_attack (skills pl)
                          let (E enemy) = current_tile (position pl) wd
                          putStrLn $ "You used " ++ title chosen_skill ++ "!"
-                         case chosen_skill of
-                            (Offensive name func) -> do
-                                    let new_enemy = func pl enemy
-                                    if health new_enemy <= 0
-                                        then do
-                                                let new_world = update_tile (position pl) (O None) wd
-                                                r <- output "You defeated the enemy!" (Explore, (pl, new_world), hlog, time)
-                                                output (combat_screen (current_tile (position pl) new_world) pl) r
-                                        else do
-                                            (player, enemy) <- enemy_attack pl new_enemy tm
-                                            let world = update_tile (position player) (E enemy) wd
-                                            output (combat_screen (current_tile (position player) wd) player) (Fight, (player, world), hlog, time)
-                            (Defensive name func) -> do
-                                    let new_player = func pl pl
-                                    (player, enemy) <- enemy_attack new_player enemy tm
-                                    output (combat_screen (current_tile (position player) wd) player) (Fight, (player, wd), hlog, time)
-            _      -> do
-                       r <- output invalid_input ret_log
-                       output (combat_screen (current_tile (position pl) wd) pl) r
+                         use_skill chosen_skill pl enemy wd hs tm
+            "item"   -> do
+                         itm_index <- choose_item (inventory pl)
+                         case itm_index of
+                             Just idx -> do
+                                          putStrLn ("You used " ++ label (inventory pl !! idx) ++ "!")
+                                          let new_player = manip_inventory pl (use_item idx)
+                                          return (Fight, (new_player, wd), hs, tm)
+                             Nothing   -> do
+                                           r <- output "Your inventory is empty!" ret
+                                           output (combat_screen (current_tile (position pl) wd) pl) r
+            _        -> do
+                         r <- output invalid_input ret_log
+                         output (combat_screen (current_tile (position pl) wd) pl) r
     | st == Help    =
         case line of
             "combat"  -> output help_combat (Help, sc, hlog, time)
@@ -73,15 +81,51 @@ parse_event :: Tile -> State
 parse_event (E _) = Fight
 parse_event _     = Explore
 
+event_handler :: Tile -> Entity -> WorldMap -> History -> Time -> IO GameData
+event_handler (E (Enemy hp atk def sk name)) pl wd hlog time = do
+    putStrLn $ "You encountered an enemy: " ++ name ++ "!"
+    output (combat_screen (current_tile (position pl) wd) pl) (Fight, (pl, wd), hlog, time)
+
+event_handler (O (Chest item)) pl wd hlog time = do
+    let new_player = manip_inventory pl (gain_item item)
+    let new_world = update_tile (position new_player) (O None) wd
+    output ("You found a chest with " ++ label item ++ "!") (Explore, (new_player, new_world), hlog, time)
+
+event_handler _ pl wd hlog time = do
+    redraw_room (pl, wd)
+    return (Explore, (pl, wd), hlog, time)
+
 output :: String -> GameData -> IO GameData
 output line sc = do
                    putStrLn line
                    return sc
 
+choose_item :: Inventory -> IO (Maybe Int)
+choose_item items = do
+                    let cons = get_consumeable items
+                    if null cons
+                        then do
+                            return Nothing
+                        else do
+                            putStrLn $ print_inventory cons
+                            putStr "> "
+                            line <- getLine
+                            if all is_digit line && not (null line)
+                                then do
+                                    let index = read line :: Int
+                                    if index < 1 || index > length cons
+                                        then do
+                                            putStrLn invalid_input
+                                            choose_item items
+                                        else return $ Just $ find_useable_index (index - 1) items
+                                else do
+                                    putStrLn invalid_input
+                                    choose_item items
+                where is_digit c = c >= '0' && c <= '9'
+
 choose_attack :: [Skill] -> IO Skill
 choose_attack skills = do
-                        putStrLn "Choose an attack:"
-                        putStrLn $ concat [ show i ++ ". " ++ show skill ++ ['\n'] | (i, skill) <- zip [1..] skills ]
+                        putStrLn $ print_skills skills
                         putStr "> "
                         line <- getLine
                         if all is_digit line && not (null line)
@@ -97,6 +141,24 @@ choose_attack skills = do
                                 putStrLn invalid_input
                                 choose_attack skills
                         where is_digit c = c >= '0' && c <= '9'
+
+use_skill :: Skill -> Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
+use_skill (Offensive name func) pl enemy wd hlog time = do
+        let new_enemy = func pl enemy
+        if health new_enemy <= 0
+            then do
+                let new_world = update_tile (position pl) (O None) wd
+                r <- output "You defeated the enemy!" (Explore, (pl, new_world), hlog, time)
+                redraw_room (pl, new_world)
+                return r
+            else do
+                (player, new_enemy) <- enemy_attack pl new_enemy time
+                let world = update_tile (position player) (E new_enemy) wd
+                output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, time)
+use_skill (Defensive name func) pl enemy wd hlog time = do
+        let new_player = func pl pl
+        (player, new_enemy) <- enemy_attack new_player enemy time
+        output (combat_screen (current_tile (position player) wd) player) (Fight, (player, wd), hlog, time)
 
 enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
 enemy_attack pl en@(Enemy hp atk def sk _) seed = do
@@ -116,15 +178,11 @@ move_player :: Coords -> GameData -> IO GameData
 move_player dir (st, sc@(pl, wd), hs, tm) = do
                          let player = move dir pl wd
                          let state = parse_event $ current_tile (position player) wd
-                         if state == Fight
-                            then
-                                output (combat_screen (current_tile (position player) wd) player) (state, (player, wd), hs, tm)
-                            else do
-                                redraw_room (player, wd)
-                                if position pl == position player
-                                    then putStrLn "You can't go there!"
-                                    else putStr ""
-                                return (state, (player, wd), hs, tm)
+                         actor <- event_handler (current_tile (position player) wd) player wd hs tm
+                         if position pl == position player
+                            then putStrLn "You can't go there!"
+                            else putStr ""
+                         event_handler (current_tile (position player) wd) player wd hs tm
 
 
 redraw_room :: Scene -> IO()
@@ -133,12 +191,12 @@ redraw_room (pl, wd) = do
 
 print_room :: Entity -> Room -> IO()
 print_room pl room = do
-                putStrLn $ concat [ concat 
-                                    [ el ++ " " | (x, obj) <- row, 
-                                                        let el = if (x, y) == pos 
-                                                                    then show tpl else show obj] 
+                putStrLn $ concat [ concat
+                                    [ el ++ " " | (x, obj) <- row,
+                                                        let el = if (x, y) == pos
+                                                                    then show tpl else show obj]
                                     ++ ['\n'] | (y, row) <- indexed ]
-                where 
+                where
                     indexed = zip [0..] (map (zip [0..]) room)
                     pos     = snd $ position pl
                     tpl     = E pl
@@ -167,15 +225,15 @@ help = "()================================()\n"
     ++ " +--------------------------------+ \n"
 
 help_combat :: String
-help_combat = "()=================================================()\n"  
+help_combat = "()=================================================()\n"
            ++ "|| _______  _____  _______ ______  _______ _______ ||\n"
-           ++ "|| |       |     | |  |  | |_____] |_____|    |    ||\n" 
+           ++ "|| |       |     | |  |  | |_____] |_____|    |    ||\n"
            ++ "|| |_____  |_____| |  |  | |_____] |     |    |    ||\n"
            ++ "||                                                 ||\n"
            ++ "()=================================================()\n"
-                
+
 help_explore :: String
-help_explore = "()========================================================()\n"   
+help_explore = "()========================================================()\n"
             ++ "|| _______ _     _  _____          _____   ______ _______ ||\n"
             ++ "|| |______  \\___/  |_____] |      |     | |_____/ |______ ||\n"
             ++ "|| |______ _/   \\_ |       |_____ |_____| |    \\_ |______ ||\n"
@@ -183,11 +241,11 @@ help_explore = "()========================================================()\n"
             ++ "()========================================================()\n"
 
 combat_screen :: Tile -> Entity -> String
-combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) = 
+combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
                "()========================================================()\n"
             ++ "||          _______ _____  ______ _     _ _______         ||\n"
             ++ "||          |______   |   |  ____ |_____|    |            ||\n"
-            ++ "||          |       __|__ |_____| |     |    |            ||\n"     
+            ++ "||          |       __|__ |_____| |     |    |            ||\n"
             ++ "()========================================================()\n"
             ++ "|| Enemy Stats:              || Your Stats:               ||\n"
             ++ "|| Name: " ++ name ++ replicate (20 - length name) ' ' ++ "||"

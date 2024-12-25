@@ -34,8 +34,8 @@ data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, s
             | Player { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], inventory :: Inventory, position :: Position }
 
 -- Items the player uses
-data Item = Consumeable { label :: String, charges :: Int, effect :: Hit }
-          | Passive     { label :: String, effect :: Hit }
+data Item = Consumeable { label :: String, charges :: Int, effect :: Hit, is_offensive :: Bool }
+          | Passive     { label :: String, effect :: Hit, is_offensive :: Bool }
 
 -- Objects present on the map
 data Object = None | Wall | Chest { loot :: Item }
@@ -57,9 +57,9 @@ instance Show Skill where
 
 instance Show Item where
     show :: Item -> String
-    show (Consumeable l c eff) = "Item: " ++ show l
+    show (Consumeable l c eff _) = "Item: " ++ show l
                               ++ " | Charges: " ++ show c
-    show (Passive l eff)       = "Item: " ++ show l
+    show (Passive l eff _)       = "Item: " ++ show l
 
 
 instance Show Entity where
@@ -82,6 +82,12 @@ instance Show Tile where
     show (O (Chest {}))  = "C"
     show (O None)        = "."
     show (O Wall)        = "#"
+
+instance Eq Item where
+    (==) :: Item -> Item -> Bool
+    (Consumeable l1 _ _ _) == (Consumeable l2 _ _ _) = l1 == l2
+    (Passive l1 _ _)       == (Passive l2 _ _)       = l1 == l2
+    _                      == _                      = False
 
 -- Entity updater
 update :: Health -> Attack -> Defence -> Hit
@@ -108,18 +114,33 @@ deal_damage mult user = update amount 0 0
     where
         amount = floor $ min 0 $ mult * fromIntegral (-attack user)
 
+-- Print functions
+print_skills :: [Skill] -> String
+print_skills skills = "Skills:\n" ++
+    unlines (zipWith (\x y -> show x ++ ". " ++ show y) [1..] skills)
+
+print_inventory :: Inventory -> String
+print_inventory inv = "Inventory:\n" ++
+    unlines (zipWith (\x y -> show x ++ ". " ++ show y) [1..] inv)
+
+-- Checks if an entity is dead
+is_dead :: Entity -> Bool
+is_dead (Player hp _ _ _ _ _) = hp <= 0
+is_dead (Enemy hp _ _ _ _)    = hp <= 0
+
 -- Inventory Operations
+manip_inventory :: Entity -> (Inventory -> Inventory) -> Entity
+manip_inventory (Player hp atk def sk inv cord) f = Player hp atk def sk (f inv) cord
+
+is_passive :: Item -> Bool
+is_passive (Passive {}) = True
+is_passive _            = False
+
 get_passive :: Inventory -> Inventory
 get_passive = filter is_passive
-    where
-        is_passive (Passive _ _) = True
-        is_passive _             = False
 
 get_consumeable :: Inventory -> Inventory
-get_consumeable = filter is_consumable
-    where
-        is_consumable (Consumeable {}) = True
-        is_consumable _                = False
+get_consumeable = filter $ not . is_passive
 
 gain_item :: Item -> Inventory -> Inventory
 gain_item itm inv = inv ++ [itm]
@@ -127,19 +148,27 @@ gain_item itm inv = inv ++ [itm]
 clear_used :: Inventory -> Inventory
 clear_used = filter $ not . is_used
     where
-        is_used (Consumeable _ charges _) = charges == 0
-        is_used _                         = False
+        is_used (Consumeable _ charges _ _) = charges == 0
+        is_used _                           = False
 
 use_item :: Int -> Inventory -> Inventory
-use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx+1) inv
+use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx + 1) inv
     where
         itm   = inv !! idx
-        after (Consumeable l c e) = Consumeable l (c - 1) e
-        after (Passive l e)       = Passive     l e
+        after (Consumeable l c e o) = Consumeable l (c - 1) e o
+        after itm                 = itm
 
+find_useable_index :: Int -> Inventory -> Int
+find_useable_index index items
+    | index >= length filtered = -1
+    | otherwise                = fst (filtered !! index)
+    where
+        filtered = filter (not . is_passive . snd) (zip [0..] items)
+
+-- Random number generation
 random_index :: Int -> Time -> Int
-random_index len seed = if len <= 1 
-                            then 0 
+random_index len seed = if len <= 1
+                            then 0
                             else fromIntegral $ rand seed `mod` toInteger len
 
 pick_random :: [a] -> Int -> a
@@ -153,9 +182,6 @@ rand seed = (1103515245 * seed + 12345) `mod` 2147483647
 
 random_range :: Time -> Integer -> Integer -> Time
 random_range seed a b = if b - a <= 0 then 0 else (rand seed `mod` (b - a)) + a
-
--- Map
-
 
 -- If pos is outside world, it is clamped inside to the nearest room
 get_room :: Coords -> WorldMap -> Room
@@ -175,14 +201,14 @@ current_tile :: Position -> WorldMap -> Tile
 current_tile (global, local) wd = get_tile local $ get_room global wd
 
 update_tile :: Position -> Tile -> WorldMap -> WorldMap
-update_tile ((g1, g2), (l1, l2)) what wd = take g2 wd ++ 
-                                    [take g1 (wd !! g2) ++ 
-                                        [take l2 (wd !! g2 !! g1) ++ 
-                                            [take l1 (wd !! g2 !! g1 !! l2) 
-                                                ++ [what] 
-                                            ++ drop (l1 + 1) (wd !! g2 !! g1 !! l2)] 
-                                        ++ drop (l2 + 1) (wd !! g2 !! g1)] 
-                                    ++ drop (g1 + 1) (wd !! g2)] 
+update_tile ((g1, g2), (l1, l2)) what wd = take g2 wd ++
+                                    [take g1 (wd !! g2) ++
+                                        [take l2 (wd !! g2 !! g1) ++
+                                            [take l1 (wd !! g2 !! g1 !! l2)
+                                                ++ [what]
+                                            ++ drop (l1 + 1) (wd !! g2 !! g1 !! l2)]
+                                        ++ drop (l2 + 1) (wd !! g2 !! g1)]
+                                    ++ drop (g1 + 1) (wd !! g2)]
                                 ++ drop (g2 + 1) wd
 
 is_inside :: Coords -> Coords -> Bool
@@ -213,6 +239,3 @@ can_step local global wd = not $ is_wall (get_tile local $ get_room global wd)
     where
         is_wall (O Wall) = True
         is_wall _        = False
-
--- >>>  generate_map (2, 2)
--- [[[[C,#,.,.,#],[C,E,.,.,.],[#,.,.,.,.],[.,.,.,C,.],[.,.,.,.,.]],[[#,#,.,.,.],[#,.,.,#,E],[E,.,.,.,.],[.,.,.,.,.],[.,.,C,.,.]]],[[[#,E,.,.,.],[#,.,.,.,.],[.,.,#,E,.],[.,.,.,.,.],[.,.,.,.,#]],[[E,.,.,.,.],[.,.,.,.,.],[.,.,.,.,.],[.,.,.,E,.],[#,E,.,.,.]]]]

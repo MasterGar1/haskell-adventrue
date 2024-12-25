@@ -7,7 +7,7 @@ import Props
 
 main :: IO()
 main = do
-    putStrLn start 
+    putStrLn start
     game_loop Explore (player, generate_map map_size) [] 0
 
 game_loop :: State -> Scene -> History -> Time -> IO()
@@ -18,5 +18,7 @@ game_loop state scene@(actor, world) history time = do
         (st, sc, hs, tm) <- parse_input input state scene history time
         if input == "quit"
             then return ()
-            else game_loop st sc hs tm
+            else if is_dead $ fst sc
+                then putStrLn "You died!"
+                else game_loop st sc hs tm
 

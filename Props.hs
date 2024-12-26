@@ -116,11 +116,13 @@ demon_lord = Enemy 25 10 5 [demon_claw, curse, greater_recovery] "Demon Lord"
 
 -- Items
 tier1_items :: [Item]
-tier1_items = [skill_book_heal, health_potion, sword, tunic]
+tier1_items = [skill_book_heal, 
+                health_potion, holy_water, 
+                sword, tunic]
 
 tier2_items :: [Item]
 tier2_items = [skill_book_double_strike, skill_book_shred, 
-                harming_potion, medium_health_potion, 
+                harming_potion, medium_health_potion, hard_flesh, 
                 chain_vest, long_sword]
 
 tier3_items :: [Item]
@@ -191,6 +193,12 @@ large_health_potion = Consumeable "Large Health Potion" 1 (update 10 0 0 []) Fal
 
 iron_skin_potion :: Item
 iron_skin_potion = Consumeable "Iron Skin Potion" 1 (update 0 0 3 []) False
+
+hard_flesh :: Item
+hard_flesh = Consumeable "Hard Flesh" 3 (update 0 1 0 []) False
+
+holy_water :: Item
+holy_water = Consumeable "Holy Water" 5 (update 1 0 0 []) False
 
 -- Skill books
 skill_book_heal :: Item

@@ -211,17 +211,69 @@ move_player dir (st, sc@(pl, wd), hs, tm) = do
 show_inventory :: GameData -> IO GameData
 show_inventory (st, sc@(pl, wd), hs, tm) = do
                     putStrLn $ print_inventory (inventory pl)
-                    return (Explore, (pl, wd), hs, tm)
+                    putStrLn "Type the item number to use it or back to return!"
+                    putStr "> "
+                    line <- getLine
+                    if line == "back"
+                        then do
+                            redraw_room sc
+                            return (Explore, (pl, wd), hs, tm)
+                        else 
+                            if all is_digit line && not (null line)
+                                then do
+                                    let index = read line :: Int
+                                    if index < 1 || index > length (inventory pl)
+                                        then do
+                                            putStrLn invalid_input
+                                            show_inventory (st, sc, hs, tm)
+                                        else do
+                                            let itm = inventory pl !! (index - 1)
+                                            if is_offensive itm
+                                                then do
+                                                    putStrLn "You can't use offensive items out of combat!"
+                                                    show_inventory (st, sc, hs, tm)
+                                                else 
+                                                    case itm of
+                                                        (Consumeable {}) -> do
+                                                                let player = manip_inventory pl (use_item (index - 1))
+                                                                let new_player = itm `effect` player
+                                                                putStrLn ("You used " ++ label itm ++ "!")
+                                                                redraw_room (new_player, wd)
+                                                                return (st, (new_player, wd), hs, tm)
+                                                        _                -> do
+                                                                putStrLn "You can't use passive items!"
+                                                                show_inventory (st, sc, hs, tm)
+                                else do
+                                        putStrLn invalid_input
+                                        show_inventory (st, sc, hs, tm)
+            
+                where is_digit c = c >= '0' && c <= '9'
 
 show_skills :: GameData -> IO GameData
 show_skills (st, sc@(pl, wd), hs, tm) = do
                     putStrLn $ print_skills (skills pl)
-                    return (Explore, (pl, wd), hs, tm)
+                    putStrLn "Type back to return!"
+                    line <- getLine
+                    if line == "back"
+                        then do
+                            redraw_room sc
+                            return (Explore, sc, hs, tm)
+                        else do
+                            putStrLn invalid_input
+                            show_skills (st, sc, hs, tm)
 
 show_stats :: GameData -> IO GameData
 show_stats (st, sc@(pl, wd), hs, tm) = do
                     print pl
-                    return (Explore, (pl, wd), hs, tm)
+                    putStrLn "Type back to return!"
+                    line <- getLine
+                    if line == "back"
+                        then do
+                            redraw_room sc
+                            return (Explore, sc, hs, tm)
+                        else do
+                            putStrLn invalid_input
+                            show_stats (st, sc, hs, tm)
 
 redraw_room :: Scene -> IO()
 redraw_room (pl, wd) = do

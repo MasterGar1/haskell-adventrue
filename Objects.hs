@@ -21,8 +21,8 @@ type Coords = (Int, Int)                  -- A pair representing coordinates (x,
 type Position = (Coords, Coords)          -- Global and local coordinates
 type Scene = (Entity, WorldMap)           -- A scene with one entity and the world map
 type Hit = Entity -> Entity               -- A transformation function for entities
-type Effect = Multiplier -> Entity -> Hit -- Effects modify entities based on a multiplier
 type Ability = Entity -> Hit              -- Abilities define specific entity actions
+type Effect = Multiplier -> Entity -> Hit -- Effects modify entities based on a multiplier
 type History = [String]                   -- Log of past events or actions
 
 -- Definition of skills as offensive or defensive abilities
@@ -57,9 +57,9 @@ instance Show Skill where
 
 instance Show Item where
     show :: Item -> String
-    show (Consumeable l c eff _) = "Item: " ++ show l
+    show (Consumeable l c _ _) = show l
                               ++ " | Charges: " ++ show c
-    show (Passive l eff _)       = "Item: " ++ show l
+    show (Passive l _ _)       = show l
 
 
 instance Show Entity where
@@ -69,11 +69,10 @@ instance Show Entity where
                              ++ " | Attack: " ++ show a
                              ++ " | Defence: " ++ show d ++ ['\n']
                              ++ "Skills: " ++ show (map title s)
-    show (Player h a d s inv _) = "Health: " ++ show h
-                             ++ " | Attack: " ++ show a
-                             ++ " | Defence: " ++ show d ++ ['\n']
-                             ++ "Inventory: " ++ show inv ++ ['\n']
-                             ++ "Skills: " ++ show (map title s)
+    show (Player h a d _ _ _) = "| Your Stats:\n"
+                             ++ "| Health: " ++ show h ++ ['\n']
+                             ++ "| Attack: " ++ show a ++ ['\n']
+                             ++ "| Defence: " ++ show d
 
 instance Show Tile where
     show :: Tile -> String
@@ -89,24 +88,54 @@ instance Eq Item where
     (Passive l1 _ _)       == (Passive l2 _ _)       = l1 == l2
     _                      == _                      = False
 
+instance Eq Skill where
+    (==) :: Skill -> Skill -> Bool
+    (Offensive t1 _) == (Offensive t2 _) = t1 == t2
+    (Defensive t1 _) == (Defensive t2 _) = t1 == t2
+    _                == _                = False
+
 -- Entity updater
 update :: Health -> Attack -> Defence -> [Skill] -> Entity -> Entity
-update hmod amod dmod nsk (Player hp atk def sk inv cord) = Player hp' atk' def' sk' inv cord
+update hmod amod dmod nsk (Enemy hp atk def sk nm) =
+        Enemy  (hp + hmod') (atk + amod) def' (gain_skill nsk sk) nm
+        where
+            hmod' = defence_bonus hmod def'
+            def'  = def + dmod
+
+update hmod amod dmod nsk (Player hp atk def sk inv cord) =
+        Player (hp + hmod') (atk + amod) def' (gain_skill nsk sk) inv cord
+        where
+            hmod' = defence_bonus hmod def'
+            def'  = def + dmod
+
+defence_bonus :: Health -> Defence -> Health
+defence_bonus dmg def
+    | dmg < 0 = min 0 $ dmg + def
+    | otherwise = dmg
+
+
+apply_passive :: Entity -> Entity
+apply_passive pl = gather_passive False (inventory pl) pl
+
+revert_passive :: Entity -> Entity
+revert_passive pl@(Player hp atk def sk inv cords) =
+    Player (hp - dhp) (atk - datk) (def - ddef) sk inv cords
     where
-        hp'  = hp + hmod
-        atk' = atk + amod
-        def' = def + dmod
-        sk'  = sk ++ nsk
-update hmod amod dmod nsk (Enemy hp atk def sk nm)        = Enemy  hp' atk' def' sk' nm
-    where
-            hp'  = hp + hmod
-            atk' = atk + amod
-            def' = def + dmod
-            sk'  = sk ++ nsk
+        Player hp' atk' def' _ _ _ = gather_passive False inv pl
+        dhp  = hp' - hp
+        datk = atk' - atk
+        ddef = def' - def
+
+gain_skill :: [Skill] -> [Skill] -> [Skill]
+gain_skill [] skills = skills
+gain_skill (s:ss) skills = if s `elem` skills
+                            then gain_skill ss skills
+                            else gain_skill ss $ s : skills
+
 
 -- Base Skills
 heal :: Effect
-heal mult user = update amount 0 0 [] 
+heal mult user = update amount 0 0 []
     where
         amount = floor $ max 0 $ mult * fromIntegral (attack user)
 
@@ -115,6 +144,10 @@ deal_damage :: Effect
 deal_damage mult user = update amount 0 0 []
     where
         amount = floor $ min 0 $ mult * fromIntegral (-attack user)
+
+-- Skill Composition
+(...) :: Ability -> Ability -> Entity -> Hit
+(sk1 ... sk2) user = sk1 user . sk2 user
 
 -- Print functions
 print_skills :: [Skill] -> String
@@ -146,7 +179,7 @@ get_consumeable = filter $ not . is_passive
 
 gather_passive :: Bool -> Inventory -> Hit
 gather_passive is_off inv = foldr (.) id selected
-    where selected = [ effect itm | itm <- inv, is_passive itm, is_offensive itm == is_off ]
+    where selected = [ effect itm | itm <- inv, is_passive itm && is_offensive itm == is_off ]
 
 gain_item :: Item -> Inventory -> Inventory
 gain_item itm inv = inv ++ [itm]

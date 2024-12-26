@@ -8,8 +8,22 @@ data State = Start | Help | Explore | Fight
 
 type GameData = (State, Scene, History, Time)
 
+elongate_line :: String -> String
+elongate_line line = case line of
+    "hp" -> "help"
+    "l" -> "left"
+    "r" -> "right"
+    "u" -> "up"
+    "d" -> "down"
+    "inv" -> "inventory"
+    "sks" -> "skills"
+    "sts" -> "stats"
+    "atk" -> "attack"
+    "itm" -> "item"
+    _ -> line
+
 parse_input :: String -> State -> Scene -> History -> Time -> IO GameData
-parse_input line st sc@(pl, wd) hs tm
+parse_input l st sc@(pl, wd) hs tm
     | line == "quit"= output "Game Exited!" ret
     | line == "log" = output (foldr (\el res ->el ++ " " ++ res) "" hs) ret
     | st == Explore =
@@ -19,15 +33,9 @@ parse_input line st sc@(pl, wd) hs tm
             "right"     -> move_player (1, 0) ret_log
             "up"        -> move_player (0, -1) ret_log
             "down"      -> move_player (0, 1) ret_log
-            "inventory" -> do
-                            putStrLn $ print_inventory (inventory pl)
-                            putStrLn "Type back to return!"
-                            putStr "> "
-                            return ret_log
-            "skills"    -> do
-                            putStrLn $ print_skills (skills pl)
-                            putStrLn "Type back to return!"
-                            return ret_log
+            "inventory" -> show_inventory ret_log
+            "skills"    -> show_skills ret_log
+            "stats"    -> show_stats ret_log
             _           -> output invalid_input ret
     | st == Fight   =
         case line of
@@ -67,6 +75,7 @@ parse_input line st sc@(pl, wd) hs tm
             _       -> output invalid_input (Start, sc, hs, time)
     | otherwise     = error "Invalid State"
     where
+        line    = elongate_line l
         time    = tm + 1
         ret     = (st, sc, hs, time)
         ret_log = (st, sc, hlog, time)
@@ -81,7 +90,9 @@ event_handler (E (Enemy hp atk def sk name)) pl wd hlog time = do
 event_handler (O (Chest item)) pl wd hlog time = do
     let new_player = manip_inventory pl (gain_item item)
     let new_world = update_tile (position new_player) (O None) wd
-    output ("You found a chest with " ++ label item ++ "!") (Explore, (new_player, new_world), hlog, time)
+    r <- output ("You found a chest with " ++ label item ++ "!") (Explore, (new_player, new_world), hlog, time)
+    redraw_room (new_player, new_world)
+    return r
 
 event_handler _ pl wd hlog time = do
     redraw_room (pl, wd)
@@ -148,13 +159,13 @@ enemy_application en pl wd hlog tm = do
             output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, tm)
 
 use_skill :: Skill -> Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
-use_skill (Offensive name sk) pl enemy wd hlog time = do
-        let skill = sk . gather_passive True (inventory pl)
-        let new_enemy = pl `skill` enemy
+use_skill (Offensive name skill) pl en wd hlog time = do
+        let pass = gather_passive True (inventory pl)
+        let new_enemy = pass $ skill pl en
         enemy_application new_enemy pl wd hlog time
 
 use_skill (Defensive name skill) pl enemy wd hlog time = do
-        let new_player = pl `skill` pl
+        let new_player = skill pl pl
         (player, new_enemy) <- enemy_attack new_player enemy time
         output (combat_screen (current_tile (position player) wd) player) (Fight, (player, wd), hlog, time)
 
@@ -166,7 +177,8 @@ apply_item idx pl wd hlog time = do
         if is_offensive itm
             then do
                 let new_enemy = itm `effect` enemy
-                enemy_application enemy player wd hlog time
+                let world = update_tile (position player) (E new_enemy) wd
+                return (Fight, (player, world), hlog, time)
             else do
                 let new_player = itm `effect` player
                 return (Fight, (new_player, wd), hlog, time)
@@ -178,11 +190,10 @@ enemy_attack pl en@(Enemy hp atk def sk _) seed = do
     putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
     case chosen_skill of
         (Offensive name skill) -> do
-            let player = gather_passive False (inventory pl) pl
-            let new_player = en `skill` player
+            let new_player = revert_passive $ skill en (apply_passive pl)
             return (new_player, en)
         (Defensive name skill) -> do
-            let new_enemy = en `skill` en
+            let new_enemy = skill en en
             return (pl, new_enemy)
 
 move_player :: Coords -> GameData -> IO GameData
@@ -196,6 +207,21 @@ move_player dir (st, sc@(pl, wd), hs, tm) = do
                 where 
                     parse_event (E (Enemy {})) = Fight
                     parse_event _              = Explore
+
+show_inventory :: GameData -> IO GameData
+show_inventory (st, sc@(pl, wd), hs, tm) = do
+                    putStrLn $ print_inventory (inventory pl)
+                    return (Explore, (pl, wd), hs, tm)
+
+show_skills :: GameData -> IO GameData
+show_skills (st, sc@(pl, wd), hs, tm) = do
+                    putStrLn $ print_skills (skills pl)
+                    return (Explore, (pl, wd), hs, tm)
+
+show_stats :: GameData -> IO GameData
+show_stats (st, sc@(pl, wd), hs, tm) = do
+                    print pl
+                    return (Explore, (pl, wd), hs, tm)
 
 redraw_room :: Scene -> IO()
 redraw_room (pl, wd) = do
@@ -273,7 +299,6 @@ combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
             ++ " | - Attack                                               | \n"
             ++ " | - Item                                                 | \n"
             ++ " +--------------------------------------------------------+ \n"
--- >>> length "======================================================"
--- 54
+
 invalid_input :: String
 invalid_input = "Invalid Input!"

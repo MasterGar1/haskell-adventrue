@@ -26,8 +26,8 @@ type Effect = Multiplier -> Entity -> Hit -- Effects modify entities based on a 
 type History = [String]                   -- Log of past events or actions
 
 -- Definition of skills as offensive or defensive abilities
-data Skill = Offensive { title :: String, func :: Ability }
-           | Defensive { title :: String, func :: Ability }
+data Skill = Offensive { title :: String, func :: Ability, desc :: String }
+           | Defensive { title :: String, func :: Ability, desc :: String }
 
 -- The main game entities: enemies and the player
 data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], name :: String }
@@ -35,7 +35,7 @@ data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, s
 
 -- Items the player uses
 data Item = Consumeable { label :: String, charges :: Int, effect :: Hit, is_offensive :: Bool }
-          | Passive     { label :: String, effect :: Hit, is_offensive :: Bool }
+          | Passive     { label :: String, effect :: Hit, is_offensive :: Bool, info :: String }
 
 -- Objects present on the map
 data Object = None | Wall | Chest { loot :: Item }
@@ -52,14 +52,13 @@ type WorldMap = [[Room]]
 -- Redefine classes to provide custom string representations
 instance Show Skill where
     show :: Skill -> String
-    show (Offensive t _) = "Attack Skill: "  ++ t
-    show (Defensive t _) = "Defence Skill: " ++ t
+    show (Offensive t _ _) = "Attack Skill: "  ++ t
+    show (Defensive t _ _) = "Defence Skill: " ++ t
 
 instance Show Item where
     show :: Item -> String
-    show (Consumeable l c _ _) = show l
-                              ++ " | Charges: " ++ show c
-    show (Passive l _ _)       = show l
+    show (Consumeable l c _ _) = l ++ " | Charges: " ++ show c
+    show (Passive l _ _ _)       = show l
 
 
 instance Show Entity where
@@ -69,10 +68,13 @@ instance Show Entity where
                              ++ " | Attack: " ++ show a
                              ++ " | Defence: " ++ show d ++ ['\n']
                              ++ "Skills: " ++ show (map title s)
-    show (Player h a d _ _ _) = "| Your Stats:\n"
-                             ++ "| Health: " ++ show h ++ ['\n']
-                             ++ "| Attack: " ++ show a ++ ['\n']
-                             ++ "| Defence: " ++ show d
+    show (Player h a d _ _ _) = "+--------------------+\n"
+                             ++ "| Your Stats:        |\n"
+                             ++ "+--------------------+\n"
+                             ++ "| Health: " ++ show h ++ replicate (10 - length (show h)) ' ' ++ " |\n"
+                             ++ "| Attack: " ++ show a ++ replicate (10 - length (show a)) ' ' ++" |\n"
+                             ++ "| Defence: " ++ show d ++ replicate (9 - length (show d)) ' ' ++ " |\n"
+                             ++ "+--------------------+"
 
 instance Show Tile where
     show :: Tile -> String
@@ -85,13 +87,13 @@ instance Show Tile where
 instance Eq Item where
     (==) :: Item -> Item -> Bool
     (Consumeable l1 _ _ _) == (Consumeable l2 _ _ _) = l1 == l2
-    (Passive l1 _ _)       == (Passive l2 _ _)       = l1 == l2
+    (Passive l1 _ _ _)       == (Passive l2 _ _ _)   = l1 == l2
     _                      == _                      = False
 
 instance Eq Skill where
     (==) :: Skill -> Skill -> Bool
-    (Offensive t1 _) == (Offensive t2 _) = t1 == t2
-    (Defensive t1 _) == (Defensive t2 _) = t1 == t2
+    (Offensive t1 _ _) == (Offensive t2 _ _) = t1 == t2
+    (Defensive t1 _ _) == (Defensive t2 _ _) = t1 == t2
     _                == _                = False
 
 -- Entity updater
@@ -151,12 +153,43 @@ deal_damage mult user = update amount 0 0 []
 
 -- Print functions
 print_skills :: [Skill] -> String
-print_skills skills = "Skills:\n" ++
-    unlines (zipWith (\x y -> show x ++ ". " ++ show y) [1..] skills)
+print_skills skills = "+" ++ replicate (spaces + 4) '-' ++ "+\n"
+    ++ "| Skills:" ++ replicate (spaces - 5) ' ' ++ " |\n"
+    ++ "+" ++ replicate (spaces + 4) '-' ++ "+\n"
+    ++ unlines (zipWith (\x y -> "| " ++ show x ++ ". " ++ show y 
+                ++ replicate (spaces - length (show y) - length (show x)) ' ' ++ " |") [1..] skills)
+    ++ "+" ++ replicate (spaces + 4) '-' ++ "+"
+    where
+        spaces = maximum (map (length . show) skills) + maximum (map (length . show) [1..(length skills)])
 
 print_inventory :: Inventory -> String
-print_inventory inv = "Inventory:\n" ++
-    unlines (zipWith (\x y -> show x ++ ". " ++ show y) [1..] inv)
+print_inventory [] = "Inventory is empty."
+print_inventory inv = "+" ++ replicate (spaces + 4) '-' ++ "+\n"
+    ++ "| Inventory:" ++ replicate (spaces - 8) ' ' ++ " |\n"
+    ++ "+" ++ replicate (spaces + 4) '-' ++ "+\n"
+    ++ unlines (zipWith (\x y -> "| " ++ show x ++ ". " ++ show y 
+                        ++ replicate (spaces - length (show y) - length (show x)) ' ' ++ " |") [1..] inv) 
+    ++ "+" ++ replicate (spaces + 4) '-' ++ "+"
+    where 
+        spaces = maximum (map (length . show) inv) + maximum (map (length . show) [1..(length inv)])
+
+print_item :: Item -> String
+print_item (Passive name _ _ desc) = "+" ++ replicate (spaces + 2) '-' ++ "+\n"
+                                  ++ "| Item: " ++ name ++ replicate (spaces - 6 - length name) ' ' ++ " |\n"
+                                  ++ "| " ++ desc ++ replicate (spaces - length desc) ' ' ++ " |\n"
+                                  ++ "+" ++ replicate (spaces + 2) '-' ++ "+\n"
+    where 
+        spaces = max (length desc) (length name + 6)
+print_item itm                     = show itm
+
+
+print_skill_desc :: Skill -> String
+print_skill_desc skill = "+" ++ replicate (spaces + 2) '-' ++ "+\n"
+                                  ++ "| Skill: " ++ title skill ++ replicate (spaces - 7 - length (title skill)) ' ' ++ " |\n"
+                                  ++ "| " ++ desc skill ++ replicate (spaces - length (desc skill)) ' ' ++ " |\n"
+                                  ++ "+" ++ replicate (spaces + 2) '-' ++ "+\n"
+    where 
+        spaces = max (length $ desc skill) (7 + length (title skill))
 
 -- Checks if an entity is dead
 is_dead :: Entity -> Bool

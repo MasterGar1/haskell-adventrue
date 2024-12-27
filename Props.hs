@@ -61,7 +61,7 @@ generate_map (x, y) =
 
 -- Player
 player :: Entity
-player = Player 10 2 0 [basic_attack] [] ((0, 0), (2, 2))
+player = Player 10 2 0 [basic_attack] [orc_heart] ((0, 0), (2, 2))
 
 tier1_enemies :: [Entity]
 tier1_enemies = [imp, goblin, spirit]
@@ -137,34 +137,34 @@ tier4_items = [skill_book_high_heal, skill_book_true_slash, skill_book_thousand_
 
 -- Passive items
 sword :: Item
-sword = Passive "Sword" (update (-1) 0 0 []) True
+sword = Passive "Sword" (update (-1) 0 0 []) True "Old rusty sword. Gives 1 bonus DMG"
 
 tunic :: Item
-tunic = Passive "Tunic" (update 0 0 1 []) False
+tunic = Passive "Tunic" (update 0 0 1 []) False "Torn tunic. Gives 1 bonus DEF"
 
 long_sword :: Item
-long_sword = Passive "Long Sword" (update (-2) 0 0 []) True
+long_sword = Passive "Long Sword" (update (-2) 0 0 []) True "Big sword. Gives 2 bonus DMG"
 
 chain_vest :: Item
-chain_vest = Passive "Chain Vest" (update 0 0 2 []) False
+chain_vest = Passive "Chain Vest" (update 0 0 2 []) False "A knight's underarmor. Gives 2 bonus DEF."
 
 silver_sword :: Item
-silver_sword = Passive "Silver Sword" (update (-3) 0 0 []) True
+silver_sword = Passive "Silver Sword" (update (-3) 0 0 []) True "A purified blade. Gives 3 bonus ATK."
 
 orc_heart :: Item
-orc_heart = Passive "Orc Heart" (update 2 0 0 []) False
+orc_heart = Passive "Orc Heart" (update 2 0 0 []) False "It is still beating? Gives 2 bonus HP."
 
 plate_armor :: Item
-plate_armor = Passive "Plate Armor" (update 0 0 3 []) False
+plate_armor = Passive "Plate Armor" (update 0 0 3 []) False "Simple armor. Gives 3 bonus DEF."
 
 dragon_slayer :: Item
-dragon_slayer = Passive "Dragon Slayer" (update (-5) 0 0 []) True
+dragon_slayer = Passive "Dragon Slayer" (update (-5) 0 0 []) True "An almyghty sword. Gives 5 bonus ATK."
 
 mythril_armor :: Item
-mythril_armor = Passive "Mythril Armor" (update 0 0 5 []) False
+mythril_armor = Passive "Mythril Armor" (update 0 0 5 []) False "Armor made of supreme materials. Gives 5 bonus DEF"
 
 chimera_heart :: Item
-chimera_heart = Passive "Chimera Heart" (update 5 0 0 []) False
+chimera_heart = Passive "Chimera Heart" (update 5 0 0 []) False "This thing is grotesque... Gives 5 bonus HP."
 
 -- Consumables
 health_potion :: Item
@@ -230,25 +230,25 @@ skill_book_pierce = Consumeable "Skill Book: Pierce" 1 (update 0 0 0 [pierce]) F
 
 -- Skills Player
 basic_attack :: Skill
-basic_attack = Offensive "Attack" (deal_damage 1)
+basic_attack = Offensive "Attack" (deal_damage 1) "A basic attack of 100% ATK"
 
 basic_heal :: Skill
-basic_heal = Defensive "Low Heal" (heal 0.7)
+basic_heal = Defensive "Low Heal" (heal 0.7) "A weak healing spell of 70% ATK"
 
 double_strike :: Skill
-double_strike = Offensive "Double Strike" $ deal_damage 0.8 ... deal_damage 0.8
+double_strike = Offensive "Double Strike" (deal_damage 0.8 ... deal_damage 0.8) "Two hits of 80% ATK"
 
 medium_heal :: Skill
-medium_heal = Defensive "Medium Heal" (heal 1.2)
+medium_heal = Defensive "Medium Heal" (heal 1.2) "Healing spell of 120% ATK"
 
 heavy_strike :: Skill
-heavy_strike = Offensive "Heavy Strike" (deal_damage 1.5)
+heavy_strike = Offensive "Heavy Strike" (deal_damage 1.5) "Large attack of 150% ATK"
 
 high_heal :: Skill
-high_heal = Defensive "High Heal" (heal 2)
+high_heal = Defensive "High Heal" (heal 2) "Powerful heal of 200% ATK"
 
 true_slash :: Skill
-true_slash = Offensive "True Slash" (deal_damage 3)
+true_slash = Offensive "True Slash" (deal_damage 3) "An onmipotent strike of 300% ATK"
 
 thousand_cuts :: Skill
 thousand_cuts = Offensive "Thousand Cuts"
@@ -256,75 +256,74 @@ thousand_cuts = Offensive "Thousand Cuts"
             ... deal_damage 0.9 ... deal_damage 0.9
             ... deal_damage 0.9 ... deal_damage 0.9
             ... deal_damage 0.9 ... deal_damage 0.9
-            ... deal_damage 0.9 ... deal_damage 0.9)
+            ... deal_damage 0.9 ... deal_damage 0.9) "An endless barrage of 10 strikes of 90% ATK"
 
 shred :: Skill
-shred = Offensive "Shred" (\user -> update 0 0 1 [])
+shred = Offensive "Shred" (\user -> update 0 0 1 []) "Break the enemy's DEF by 1"
 
 pierce :: Skill
-pierce = Offensive "Shred" (\user -> update 0 0 3 [])
+pierce = Offensive "Pierce" (\user -> update 0 0 3 []) "Crush the enemy's protection by 3 DEF"
 
 -- Skills Enemies
 claw_strike :: Skill
-claw_strike = Offensive "Claw Strike" (deal_damage 1)
+claw_strike = Offensive "Claw Strike" (deal_damage 1) "A claw attack of 100% ATK"
 
 lesser_recovery :: Skill
-lesser_recovery = Defensive "Lesser Recovery" (heal 0.5)
+lesser_recovery = Defensive "Lesser Recovery" (heal 0.5) "Tiny recovery spell of 50% ATK"
 
 club_bash :: Skill
-club_bash = Offensive "Club Bash" (deal_damage 1)
+club_bash = Offensive "Club Bash" (deal_damage 1) "Smash with a club of 100% ATK"
 
 possession :: Skill
-possession = Offensive "Possession" (deal_damage 1.5)
+possession = Offensive "Possession" (deal_damage 1.5) "Mental attack of 150% ATK"
 
 hardening :: Skill
-hardening = Defensive "Hardening" (\user -> update 0 0 1 [])
+hardening = Defensive "Hardening" (\user -> update 0 0 1 []) "Protection spell + 1 DEF"
 
 recovery :: Skill
-recovery = Defensive "Recovery" (heal 0.7)
+recovery = Defensive "Recovery" (heal 0.7) "Small recovery of 70% ATK"
 
 charm :: Skill
-charm = Offensive "Charm" (\user -> update 0 1 0 [])
-
+charm = Offensive "Charm" (\user -> update 0 1 0 []) "Reduction of 1 ATK"
 
 strike :: Skill
-strike = Offensive "Strike" (deal_damage 1)
+strike = Offensive "Strike" (deal_damage 1) "Basic attack of 100% ATK"
 
 smash :: Skill
-smash = Offensive "Smash" (deal_damage 2)
+smash = Offensive "Smash" (deal_damage 2) "Smash!!! of 200% ATK"
 
 wind_slash :: Skill
-wind_slash = Offensive "Wind Slash" (deal_damage 1)
+wind_slash = Offensive "Wind Slash" (deal_damage 1) "Wind volley of 100% ATK"
 
 howl :: Skill
-howl = Defensive "Howl" (\user -> update 0 1 0 []) 
+howl = Defensive "Howl" (\user -> update 0 1 0 []) "Morale boost of 1 ATK"
 
 bite :: Skill
-bite = Offensive "Bite" (deal_damage 1)
+bite = Offensive "Bite" (deal_damage 1) "Biting attack of 100% ATK"
 
 blood_absorbtion :: Skill
-blood_absorbtion = Defensive "Blood Absorbtion" (heal 1.5)
+blood_absorbtion = Defensive "Blood Absorbtion" (heal 1.5) "Absorb blood to heal by 150% of ATK"
 
 suck :: Skill
-suck = Offensive "Suck" (\user -> update 1 1 0 [])
+suck = Offensive "Suck" (\user -> update 3 1 0 []) "Suck opponent's blood to take 3 HP and 1 ATK"
 
 ghost_bullet :: Skill
-ghost_bullet = Offensive "Ghost Bullet" (\user -> update 1 0 1 [])
+ghost_bullet = Offensive "Ghost Bullet" (\user -> update 4 0 1 []) "An invisible attack reducing HP by 4 and DEF by 1"
 
 absorbtion :: Skill
-absorbtion = Defensive "Absorbtion" (heal 1)
+absorbtion = Defensive "Absorbtion" (heal 1) "Basic healing of 100% ATK"
 
 growth :: Skill
-growth = Defensive "Growth" (\user -> update 1 1 1 [])
+growth = Defensive "Growth" (\user -> update 1 1 1 []) "Grow in all aspects!"
 
 fire_breath :: Skill
-fire_breath = Offensive "Fire Breath" (deal_damage 2)
+fire_breath = Offensive "Fire Breath" (deal_damage 2) "Breathe fire to deal 200% of ATK"
 
 demon_claw :: Skill
-demon_claw = Offensive "Demon Claw" (deal_damage 1)
+demon_claw = Offensive "Demon Claw" (deal_damage 1) "Tear all apart with 100% of ATK"
 
 curse :: Skill
-curse = Offensive "Curse" (\user -> update 0 1 1 [])
+curse = Offensive "Curse" (\user -> update 0 1 1 []) "Weaken your opponent by 1 DEF and 1 ATK"
 
 greater_recovery :: Skill
-greater_recovery = Defensive "Greater Recovery" (heal 1)
+greater_recovery = Defensive "Greater Recovery" (heal 1) "Heal a lot by 100% of ATK"

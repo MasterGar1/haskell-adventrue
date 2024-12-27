@@ -28,7 +28,7 @@ parse_input l st sc@(pl, wd) hs tm
     | line == "log" = output (foldr (\el res ->el ++ " " ++ res) "" hs) ret
     | st == Explore =
         case line of
-            "help"      -> output help (Help, sc, hlog, time)
+            "help"      -> help (Help, sc, hlog, time)
             "left"      -> move_player (-1, 0) ret_log
             "right"     -> move_player (1, 0) ret_log
             "up"        -> move_player (0, -1) ret_log
@@ -58,13 +58,15 @@ parse_input l st sc@(pl, wd) hs tm
                          output (combat_screen (current_tile (position pl) wd) pl) r
     | st == Help    =
         case line of
-            "combat"  -> output help_combat (Help, sc, hlog, time)
-            "explore" -> output help_explore (Help, sc, hlog, time)
-            "exit"    -> do
+            "combat"   -> help_combat (Help, sc, hlog, time)
+            "explore"  -> help_explore (Help, sc, hlog, time)
+            "skills"   -> help_skills (Help, sc, hlog, time)
+            "items"    -> help_items (Help, sc, hlog, time)
+            "exit"     -> do
                           redraw_room sc
                           return (Explore, sc, hs, time)
-            _         -> do
-                          r <- output help (Help, sc, hs, time)
+            _          -> do
+                          r <- help (Help, sc, hs, time)
                           output invalid_input r
     | st == Start    =
         case line of
@@ -159,15 +161,14 @@ enemy_application en pl wd hlog tm = do
             output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, tm)
 
 use_skill :: Skill -> Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
-use_skill (Offensive name skill) pl en wd hlog time = do
+use_skill (Offensive _ skill _) pl en wd hlog time = do
         let pass = gather_passive True (inventory pl)
         let new_enemy = pass $ skill pl en
         enemy_application new_enemy pl wd hlog time
 
-use_skill (Defensive name skill) pl enemy wd hlog time = do
+use_skill (Defensive _ skill _) pl enemy wd hlog time = do
         let new_player = skill pl pl
-        (player, new_enemy) <- enemy_attack new_player enemy time
-        output (combat_screen (current_tile (position player) wd) player) (Fight, (player, wd), hlog, time)
+        enemy_application enemy new_player wd hlog time
 
 apply_item :: Int -> Entity -> WorldMap -> [String] -> Time -> IO GameData
 apply_item idx pl wd hlog time = do
@@ -178,10 +179,10 @@ apply_item idx pl wd hlog time = do
             then do
                 let new_enemy = itm `effect` enemy
                 let world = update_tile (position player) (E new_enemy) wd
-                return (Fight, (player, world), hlog, time)
+                enemy_application new_enemy player wd hlog time
             else do
                 let new_player = itm `effect` player
-                return (Fight, (new_player, wd), hlog, time)
+                enemy_application enemy new_player wd hlog time
 
 enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
 enemy_attack pl en@(Enemy hp atk def sk _) seed = do
@@ -189,10 +190,10 @@ enemy_attack pl en@(Enemy hp atk def sk _) seed = do
     let chosen_skill = pick_random sk $ fromInteger seed
     putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
     case chosen_skill of
-        (Offensive name skill) -> do
+        (Offensive _ skill _) -> do
             let new_player = revert_passive $ skill en (apply_passive pl)
             return (new_player, en)
-        (Defensive name skill) -> do
+        (Defensive _ skill _) -> do
             let new_enemy = skill en en
             return (pl, new_enemy)
 
@@ -208,72 +209,89 @@ move_player dir (st, sc@(pl, wd), hs, tm) = do
                     parse_event (E (Enemy {})) = Fight
                     parse_event _              = Explore
 
+is_digit :: Char -> Bool
+is_digit c = c >= '0' && c <= '9'
+
 show_inventory :: GameData -> IO GameData
 show_inventory (st, sc@(pl, wd), hs, tm) = do
-                    putStrLn $ print_inventory (inventory pl)
-                    putStrLn "Type the item number to use it or back to return!"
-                    putStr "> "
-                    line <- getLine
-                    if line == "back"
-                        then do
-                            redraw_room sc
-                            return (Explore, (pl, wd), hs, tm)
-                        else 
-                            if all is_digit line && not (null line)
-                                then do
-                                    let index = read line :: Int
-                                    if index < 1 || index > length (inventory pl)
-                                        then do
-                                            putStrLn invalid_input
-                                            show_inventory (st, sc, hs, tm)
-                                        else do
-                                            let itm = inventory pl !! (index - 1)
-                                            if is_offensive itm
-                                                then do
-                                                    putStrLn "You can't use offensive items out of combat!"
-                                                    show_inventory (st, sc, hs, tm)
-                                                else 
-                                                    case itm of
-                                                        (Consumeable {}) -> do
-                                                                let player = manip_inventory pl (use_item (index - 1))
-                                                                let new_player = itm `effect` player
-                                                                putStrLn ("You used " ++ label itm ++ "!")
-                                                                redraw_room (new_player, wd)
-                                                                return (st, (new_player, wd), hs, tm)
-                                                        _                -> do
-                                                                putStrLn "You can't use passive items!"
-                                                                show_inventory (st, sc, hs, tm)
-                                else do
-                                        putStrLn invalid_input
+    putStrLn $ print_inventory (inventory pl)
+    if null $ inventory pl
+        then do
+            redraw_room sc
+            return (Explore, (pl, wd), hs, tm)
+        else do
+        putStrLn "Type the item number to use it or back to return!"
+        putStr "> "
+        line <- getLine
+        if line == "back"
+            then do
+                redraw_room sc
+                return (Explore, (pl, wd), hs, tm)
+            else 
+                if all is_digit line && not (null line)
+                    then do
+                        let index = read line :: Int
+                        if index < 1 || index > length (inventory pl)
+                            then do
+                                putStrLn invalid_input
+                                show_inventory (st, sc, hs, tm)
+                            else do
+                                let itm = inventory pl !! (index - 1)
+                                if is_offensive itm
+                                    then do
+                                        putStrLn "You can't use offensive items out of combat!"
                                         show_inventory (st, sc, hs, tm)
-            
-                where is_digit c = c >= '0' && c <= '9'
+                                    else 
+                                        case itm of
+                                            (Consumeable {}) -> do
+                                                    let player = manip_inventory pl (use_item (index - 1))
+                                                    let new_player = itm `effect` player
+                                                    putStrLn ("You used " ++ label itm ++ "!")
+                                                    redraw_room (new_player, wd)
+                                                    return (st, (new_player, wd), hs, tm)
+                                            (Passive {})     -> do
+                                                    putStrLn $ print_item itm
+                                                    show_inventory (st, sc, hs, tm)
+                    else do
+                            putStrLn invalid_input
+                            show_inventory (st, sc, hs, tm)
 
 show_skills :: GameData -> IO GameData
 show_skills (st, sc@(pl, wd), hs, tm) = do
-                    putStrLn $ print_skills (skills pl)
-                    putStrLn "Type back to return!"
-                    line <- getLine
-                    if line == "back"
+    putStrLn $ print_skills (skills pl)
+    putStrLn "Type back to return or skill number to see info!"
+    line <- getLine
+    if line == "back"
+        then do
+        redraw_room sc
+        return (Explore, sc, hs, tm)
+        else if all is_digit line && not (null line)
+                then do
+                    let index = read line :: Int
+                    if index < 1 || index > length (inventory pl)
                         then do
-                            redraw_room sc
-                            return (Explore, sc, hs, tm)
-                        else do
                             putStrLn invalid_input
                             show_skills (st, sc, hs, tm)
+                        else do
+                            let sk = skills pl !! (index - 1)
+                            putStrLn (print_skill_desc sk)
+                            show_skills (st, sc, hs, tm)
+                else do
+                    putStrLn invalid_input
+                    show_skills (st, sc, hs, tm)
 
 show_stats :: GameData -> IO GameData
 show_stats (st, sc@(pl, wd), hs, tm) = do
-                    print pl
-                    putStrLn "Type back to return!"
-                    line <- getLine
-                    if line == "back"
-                        then do
-                            redraw_room sc
-                            return (Explore, sc, hs, tm)
-                        else do
-                            putStrLn invalid_input
-                            show_stats (st, sc, hs, tm)
+    print pl
+    putStrLn "Type back to return!"
+    line <- getLine
+    if line == "back"
+        then do
+            redraw_room sc
+            return (Explore, sc, hs, tm)
+        else do
+            putStrLn invalid_input
+            show_stats (st, sc, hs, tm)
 
 redraw_room :: Scene -> IO()
 redraw_room (pl, wd) = do
@@ -282,10 +300,10 @@ redraw_room (pl, wd) = do
 print_room :: Entity -> Room -> IO()
 print_room pl room = do
                 putStrLn $ concat [ concat
-                                    [ el ++ " " | (x, obj) <- row,
+                                    [ el ++ "   " | (x, obj) <- row,
                                                         let el = if (x, y) == pos
                                                                     then show tpl else show obj]
-                                    ++ ['\n'] | (y, row) <- indexed ]
+                                    ++ "\n\n" | (y, row) <- indexed ]
                 where
                     indexed = zip [0..] (map (zip [0..]) room)
                     pos     = snd $ position pl
@@ -297,38 +315,107 @@ to_lower str = [ if is_upper x then make_lower x else x | x <- str ]
         is_upper c   = c > 'A' && c < 'Z'
         make_lower c = toEnum (fromEnum c + 32) :: Char
 
+split :: String -> IO [String]
+split str = return $ words str
+
+--Interfaces
+
 start :: String
-start = "Hello, adventurer! To play the game type start!"
+start = "+-------------------------------------------------------------+\n"
+     ++ "| Hello, adventurer!                                          |\n"
+     ++ "| The winds of fate have carried you to Eryndor,              |\n"
+     ++ "| a land of untold riches and relentless challenges.          |\n"
+     ++ "| Scattered across these wild lands are ancient chests,       |\n"
+     ++ "| each brimming with mystery and magic.                       |\n"
+     ++ "| Some hold treasures beyond your dreams;                     |\n"
+     ++ "| others, trials to test your strength and resolve.           |\n" 
+     ++ "| The question is simple:                                     |\n"
+     ++ "| Will you risk it all for glory and the thrill of discovery? |\n"
+     ++ "| Your path begins now, adventurer.                           |\n"
+     ++ "| Seek the chests, face the beasts,                           |\n"
+     ++ "| and prove that you are worthy of the legend.                |\n"
+     ++ "|                                                             |\n"
+     ++ "| Type 'start' to begin your journey.                         |\n"
+     ++ "+-------------------------------------------------------------+\n"
 
-help :: String
-help = "()================================()\n"
-    ++ "|| _     _ _______         _____  ||\n"
-    ++ "|| |_____| |______ |      |_____] ||\n"
-    ++ "|| |     | |______ |_____ |       ||\n"
-    ++ "||                                ||\n"
-    ++ "()================================()\n"
-    ++ " | What do you need help with?    | \n"
-    ++ " | - Combat                       | \n"
-    ++ " | - Explore                      | \n"
-    ++ " | - Controls                     | \n"
-    ++ " | - Exit                         | \n"
-    ++ " +--------------------------------+ \n"
+help :: GameData -> IO GameData
+help gd = do
+    putStrLn txt
+    return gd
+    where 
+        txt =  "()================================()\n"
+            ++ "|| _     _ _______         _____  ||\n"
+            ++ "|| |_____| |______ |      |_____] ||\n"
+            ++ "|| |     | |______ |_____ |       ||\n"
+            ++ "||                                ||\n"
+            ++ "()================================()\n"
+            ++ " | What do you need help with?    | \n"
+            ++ " | - Combat                       | \n"
+            ++ " | - Explore                      | \n"
+            ++ " | - Skills                       | \n"
+            ++ " | - Items                        | \n"
+            ++ " | - Exit                         | \n"
+            ++ " +--------------------------------+ \n"
 
-help_combat :: String
-help_combat = "()=================================================()\n"
-           ++ "|| _______  _____  _______ ______  _______ _______ ||\n"
-           ++ "|| |       |     | |  |  | |_____] |_____|    |    ||\n"
-           ++ "|| |_____  |_____| |  |  | |_____] |     |    |    ||\n"
-           ++ "||                                                 ||\n"
-           ++ "()=================================================()\n"
+help_combat :: GameData -> IO GameData
+help_combat gd = do
+    putStrLn txt
+    line <- getLine
+    if line == "back"
+        then return gd
+        else do
+            r <- output invalid_input gd
+            help_combat r
+    where txt = "()=================================================()\n"
+             ++ "|| _______  _____  _______ ______  _______ _______ ||\n"
+             ++ "|| |       |     | |  |  | |_____] |_____|    |    ||\n"
+             ++ "|| |_____  |_____| |  |  | |_____] |     |    |    ||\n"
+             ++ "||                                                 ||\n"
+             ++ "()=================================================()\n"
+             ++ " | You can enter combat by encountering an enemy.  | \n"
+             ++ " | Doing so, a fight interface will be opened.     | \n"
+             ++ " | There, you will be able to see your and the     | \n"
+             ++ " | enemy's stats, and choose your actions.         | \n"
+             ++ " | There are two types of actions:                 | \n"
+             ++ " | - Attack or Atk: Choose a skill to use          | \n"
+             ++ " | - Item or Itm: Use a consumable item            | \n"
+             ++ " | The fight will continue until one of the        | \n"
+             ++ " | combatants is defeated.                         | \n"
+             ++ " |                                                 | \n"
+             ++ " +-------------------------------------------------+ \n"
+             ++ " | Type 'back' to return to the help menu.         | \n"
+             ++ " +-------------------------------------------------+ \n"
 
-help_explore :: String
-help_explore = "()========================================================()\n"
-            ++ "|| _______ _     _  _____          _____   ______ _______ ||\n"
-            ++ "|| |______  \\___/  |_____] |      |     | |_____/ |______ ||\n"
-            ++ "|| |______ _/   \\_ |       |_____ |_____| |    \\_ |______ ||\n"
-            ++ "||                                                        ||\n"
-            ++ "()========================================================()\n"
+help_explore :: GameData -> IO GameData
+help_explore gd = do
+    putStrLn txt
+    line <- getLine
+    if line == "back"
+        then return gd
+        else do
+            r <- output invalid_input gd
+            help_explore r
+    where txt = "()========================================================()\n"
+             ++ "|| _______ _     _  _____          _____   ______ _______ ||\n"
+             ++ "|| |______  \\___/  |_____] |      |     | |_____/ |______ ||\n"
+             ++ "|| |______ _/   \\_ |       |_____ |_____| |    \\_ |______ ||\n"
+             ++ "||                                                        ||\n"
+             ++ "()========================================================()\n"
+             ++ " | You can explore the world by moving your character.    | \n"
+             ++ " | You can move in four directions:                       | \n"
+             ++ " | - Left or L: Move to the left                          | \n"
+             ++ " | - Right or R: Move to the right                        | \n"
+             ++ " | - Up or U: Move up                                     | \n"
+             ++ " | - Down or D: Move down                                 | \n"
+             ++ " | You can also check your inventory, skills and stats.   | \n"
+             ++ " | To do so, type 'inventory' / 'inv,                     | \n"
+             ++ " | 'skills' / 'sks' or 'stats' / 'sts'.                   | \n"
+             ++ " | While exploring you may encounter enemies or chests.   | \n"
+             ++ " | Enemies will trigger combat, while chests will give    | \n"
+             ++ " | you items or skill books.                              | \n"
+             ++ " +--------------------------------------------------------+ \n"
+             ++ " | Type 'back' to return to the help menu.                | \n"
+             ++ " +--------------------------------------------------------+ \n"
 
 combat_screen :: Tile -> Entity -> String
 combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
@@ -351,6 +438,69 @@ combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
             ++ " | - Attack                                               | \n"
             ++ " | - Item                                                 | \n"
             ++ " +--------------------------------------------------------+ \n"
+
+help_skills :: GameData -> IO GameData
+help_skills gd = do
+    putStrLn txt
+    line <- getLine
+    if line == "back"
+        then return gd
+        else do
+            r <- output invalid_input gd
+            help_skills r
+    where txt = "()========================================================()\n"
+             ++ "||      _______ _     _ _____               _______       ||\n"
+             ++ "||      |______ |____/    |   |      |      |______       ||\n"
+             ++ "||      ______| |    \\_ __|__ |_____ |_____ ______|      ||\n"
+             ++ "||                                                        ||\n"
+             ++ "()========================================================()\n"
+             ++ " | You can check your skills by typing 'skills' or 'sks'. | \n"
+             ++ " | There, you will be able to see all your available      | \n"
+             ++ " | skills.                                                | \n"
+             ++ " | You can see a skill's effect by selecting it.          | \n"
+             ++ " | You can use your skills in combat to defeat enemies.   | \n"
+             ++ " | Skills are divided into two categories:                | \n"
+             ++ " | - Offensive: Skills that deal damage to enemies.       | \n"
+             ++ " | - Defensive: Skills that heal or buff your character.  | \n"
+             ++ " | Remember that you can only use one skill per turn.     | \n"
+             ++ " +--------------------------------------------------------+ \n"
+             ++ " | Type 'back' to return to the help menu.                | \n"
+             ++ " +--------------------------------------------------------+ \n"
+
+help_items :: GameData -> IO GameData
+help_items gd = do
+    putStrLn txt
+    line <- getLine
+    if line == "back"
+        then return gd
+        else do
+            r <- output invalid_input gd
+            help_items r
+    where txt = "()=======================================================()\n"
+             ++ "||         _____ _______ _______ _______ _______         ||\n"
+             ++ "||           |      |    |______ |  |  | |______         ||\n"
+             ++ "||         __|__    |    |______ |  |  | ______|         ||\n"
+             ++ "||                                                       ||\n"
+             ++ "()=======================================================()\n"
+             ++ " | You can check your inventory by typing 'inventory'    | \n"
+             ++ " | or 'inv'. There, you will be able to see all the      | \n"
+             ++ " | items you have collected.                             | \n"
+             ++ " | You can use consumable items in combat to heal or     | \n"
+             ++ " | buff your character.                                  | \n"
+             ++ " | Passive items to permanently increase your stats      | \n"
+             ++ " | before each turn.                                     | \n"
+             ++ " | Remember that you can only use one item per turn.     | \n"
+             ++ " +-------------------------------------------------------+ \n"
+             ++ " | Type 'back' to return to the help menu.               | \n"
+             ++ " +-------------------------------------------------------+ \n"
+
+death :: String
+death = "+----------------------------------------------------------------+\n"
+     ++ "| __   __  _____  _     _      ______  _____ _______ ______    / |\n"
+     ++ "|   \\_/   |     | |     |      |     \\   |   |______ |     \\  /  |\n"
+     ++ "|    |    |_____| |_____|      |_____/ __|__ |______ |_____/ .  |\n" 
+     ++ "+----------------------------------------------------------------+\n"
+
 
 invalid_input :: String
 invalid_input = "Invalid Input!"

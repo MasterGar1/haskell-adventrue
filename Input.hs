@@ -10,17 +10,17 @@ type GameData = (State, Scene, History, Time)
 
 elongate_line :: String -> String
 elongate_line line = case line of
-    "hp" -> "help"
-    "l" -> "left"
-    "r" -> "right"
-    "u" -> "up"
-    "d" -> "down"
+    "hp"  -> "help"
+    "l"   -> "left"
+    "r"   -> "right"
+    "u"   -> "up"
+    "d"   -> "down"
     "inv" -> "inventory"
     "sks" -> "skills"
     "sts" -> "stats"
     "atk" -> "attack"
     "itm" -> "item"
-    _ -> line
+    _     -> line
 
 parse_input :: String -> State -> Scene -> History -> Time -> IO GameData
 parse_input l st sc@(pl, wd) hs tm
@@ -35,7 +35,7 @@ parse_input l st sc@(pl, wd) hs tm
             "down"      -> move_player (0, 1) ret_log
             "inventory" -> show_inventory ret_log
             "skills"    -> show_skills ret_log
-            "stats"    -> show_stats ret_log
+            "stats"     -> show_stats ret_log
             _           -> output invalid_input ret
     | st == Fight   =
         case line of
@@ -63,11 +63,11 @@ parse_input l st sc@(pl, wd) hs tm
             "skills"   -> help_skills (Help, sc, hlog, time)
             "items"    -> help_items (Help, sc, hlog, time)
             "exit"     -> do
-                          redraw_room sc
-                          return (Explore, sc, hs, time)
+                           redraw_room sc
+                           return (Explore, sc, hs, time)
             _          -> do
-                          r <- help (Help, sc, hs, time)
-                          output invalid_input r
+                           r <- help (Help, sc, hs, time)
+                           output invalid_input r
     | st == Start    =
         case line of
             "start" -> do
@@ -82,7 +82,6 @@ parse_input l st sc@(pl, wd) hs tm
         ret     = (st, sc, hs, time)
         ret_log = (st, sc, hlog, time)
         hlog    = line : hs
-
 
 event_handler :: Tile -> Entity -> WorldMap -> History -> Time -> IO GameData
 event_handler (E (Enemy hp atk def sk name)) pl wd hlog time = do
@@ -219,7 +218,7 @@ show_inventory (st, sc@(pl, wd), hs, tm) = do
             redraw_room sc
             return (Explore, (pl, wd), hs, tm)
         else do
-        putStrLn "Type the item number to use it or back to return!"
+        putStrLn "Type the item number to use it or 'back' to return!"
         putStr "> "
         line <- getLine
         if line == "back"
@@ -236,21 +235,16 @@ show_inventory (st, sc@(pl, wd), hs, tm) = do
                                 show_inventory (st, sc, hs, tm)
                             else do
                                 let itm = inventory pl !! (index - 1)
-                                if is_offensive itm
-                                    then do
-                                        putStrLn "You can't use offensive items out of combat!"
-                                        show_inventory (st, sc, hs, tm)
-                                    else 
-                                        case itm of
-                                            (Consumeable {}) -> do
-                                                    let player = manip_inventory pl (use_item (index - 1))
-                                                    let new_player = itm `effect` player
-                                                    putStrLn ("You used " ++ label itm ++ "!")
-                                                    redraw_room (new_player, wd)
-                                                    return (st, (new_player, wd), hs, tm)
-                                            (Passive {})     -> do
-                                                    putStrLn $ print_item itm
-                                                    show_inventory (st, sc, hs, tm)
+                                case itm of
+                                    (Consumeable {}) -> do
+                                            let player = manip_inventory pl (use_item (index - 1))
+                                            let new_player = itm `effect` player
+                                            putStrLn ("You used " ++ label itm ++ "!")
+                                            redraw_room (new_player, wd)
+                                            return (st, (new_player, wd), hs, tm)
+                                    (Passive {})     -> do
+                                            putStrLn $ print_item itm
+                                            show_inventory (st, sc, hs, tm)
                     else do
                             putStrLn invalid_input
                             show_inventory (st, sc, hs, tm)
@@ -258,7 +252,7 @@ show_inventory (st, sc@(pl, wd), hs, tm) = do
 show_skills :: GameData -> IO GameData
 show_skills (st, sc@(pl, wd), hs, tm) = do
     putStrLn $ print_skills (skills pl)
-    putStrLn "Type back to return or skill number to see info!"
+    putStrLn "Type 'back' to return or skill number to see info!"
     line <- getLine
     if line == "back"
         then do
@@ -450,7 +444,7 @@ help_skills gd = do
     where txt = "()========================================================()\n"
              ++ "||      _______ _     _ _____               _______       ||\n"
              ++ "||      |______ |____/    |   |      |      |______       ||\n"
-             ++ "||      ______| |    \\_ __|__ |_____ |_____ ______|      ||\n"
+             ++ "||      ______| |    \\_ __|__ |_____ |_____ ______|       ||\n"
              ++ "||                                                        ||\n"
              ++ "()========================================================()\n"
              ++ " | You can check your skills by typing 'skills' or 'sks'. | \n"

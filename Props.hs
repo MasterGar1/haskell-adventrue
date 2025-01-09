@@ -15,9 +15,9 @@ get_absolute_coords (l1, l2) (g1, g2) = (g1 * fst room_size + l1, g2 * snd room_
 
 generate_entity :: Coords -> Coords -> Tile
 generate_entity l@(l1, l2) g@(g1, g2)
-    | randomness < 2  = O $ Chest $ select_item l g seed
-    | randomness < 10 = O Wall
-    | randomness < 15 = E $ select_enemy l g seed
+    | randomness < 5  = O $ Chest $ select_item l g seed
+    | randomness < 13 = O Wall
+    | randomness < 18 = E $ select_enemy l g seed
     | otherwise       = O None
     where
         randomness = seed `mod` 100
@@ -251,12 +251,13 @@ true_slash :: Skill
 true_slash = Offensive "True Slash" (deal_damage 3) "An onmipotent strike of 300% ATK"
 
 thousand_cuts :: Skill
-thousand_cuts = Offensive "Thousand Cuts"
-            (deal_damage 0.9 ... deal_damage 0.9
+thousand_cuts = Offensive "Thousand Cuts" (
+                deal_damage 0.9 ... deal_damage 0.9
             ... deal_damage 0.9 ... deal_damage 0.9
             ... deal_damage 0.9 ... deal_damage 0.9
             ... deal_damage 0.9 ... deal_damage 0.9
-            ... deal_damage 0.9 ... deal_damage 0.9) "An endless barrage of 10 strikes of 90% ATK"
+            ... deal_damage 0.9 ... deal_damage 0.9
+            ) "An endless barrage of 10 strikes of 90% ATK"
 
 shred :: Skill
 shred = Offensive "Shred" (\user -> update 0 0 1 []) "Break the enemy's DEF by 1"

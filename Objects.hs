@@ -146,7 +146,7 @@ deal_damage :: Effect
 deal_damage mult user = update amount 0 0 []
     where
         amount = floor $ min 0 $ mult * fromIntegral (-attack user)
-
+        
 -- Skill Composition
 (...) :: Ability -> Ability -> Entity -> Hit
 (sk1 ... sk2) user = sk1 user . sk2 user

@@ -61,7 +61,7 @@ generate_map (x, y) =
 
 -- Player
 player :: Entity
-player = Player 10 2 0 [basic_attack] [orc_heart] ((0, 0), (2, 2))
+player = Player 10 3 0 [basic_attack] [] ((0, 0), (2, 2))
 
 tier1_enemies :: [Entity]
 tier1_enemies = [imp, goblin, spirit]
@@ -78,7 +78,7 @@ tier4_enemies = [chimera, dragon, demon_lord]
 -- Enemies
 -- Tier 1
 imp :: Entity
-imp = Enemy 4 2 0 [claw_strike, lesser_recovery] "Imp"
+imp = Enemy 4 2 0 [claw_strike] "Imp"
 
 goblin :: Entity
 goblin = Enemy 6 1 1 [club_bash] "Goblin"

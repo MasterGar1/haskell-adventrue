@@ -186,7 +186,6 @@ apply_item idx pl wd hlog time = do
 
 enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
 enemy_attack pl en@(Enemy hp atk def sk _) seed = do
-    let idx = random_index (length sk) seed
     let chosen_skill = pick_random sk $ fromInteger seed
     putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
     case chosen_skill of

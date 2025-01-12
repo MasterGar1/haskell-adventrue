@@ -3,27 +3,16 @@
 module Input where
 import Objects
 
+-- Basic states for the game state machine
 data State = Start | Help | Explore | Fight
     deriving (Eq, Show, Read)
 
+-- Type of the things kept after each game loop
 type GameData = (State, Scene, History, Time)
 
-elongate_line :: String -> String
-elongate_line line = case line of
-    "hp"  -> "help"
-    "l"   -> "left"
-    "r"   -> "right"
-    "u"   -> "up"
-    "d"   -> "down"
-    "inv" -> "inventory"
-    "sks" -> "skills"
-    "sts" -> "stats"
-    "atk" -> "attack"
-    "itm" -> "item"
-    _     -> line
-
+-- Input Parser
 parse_input :: String -> State -> Scene -> History -> Time -> IO GameData
-parse_input l st sc@(pl, wd) hs tm
+parse_input line st sc@(pl, wd) hs tm
     | line == "quit"= output "Game Exited!" ret
     | line == "log" = output (foldr (\el res ->el ++ " " ++ res) "" hs) ret
     | st == Explore =
@@ -74,15 +63,16 @@ parse_input l st sc@(pl, wd) hs tm
                         r <- output "Game Started!" (Explore, sc, hs, time)
                         redraw_room sc
                         return r
+            "help"  -> help (Help, sc, hlog, time)
             _       -> output invalid_input (Start, sc, hs, time)
     | otherwise     = error "Invalid State"
     where
-        line    = elongate_line l
         time    = tm + 1
         ret     = (st, sc, hs, time)
         ret_log = (st, sc, hlog, time)
         hlog    = line : hs
 
+-- Checks if an event is encountered while player is exploring
 event_handler :: Tile -> Entity -> WorldMap -> History -> Time -> IO GameData
 event_handler (E (Enemy hp atk def sk name)) pl wd hlog time = do
     putStrLn $ "You encountered an enemy: " ++ name ++ "!"
@@ -99,33 +89,18 @@ event_handler _ pl wd hlog time = do
     redraw_room (pl, wd)
     return (Explore, (pl, wd), hlog, time)
 
-output :: String -> GameData -> IO GameData
-output line sc = do
-                   putStrLn line
-                   return sc
-
-choose_item :: Inventory -> IO (Maybe Int)
-choose_item items = do
-                    let cons = get_consumeable items
-                    if null cons
-                        then do
-                            return Nothing
-                        else do
-                            putStrLn $ print_inventory cons
-                            putStr "> "
-                            line <- getLine
-                            if all is_digit line && not (null line)
-                                then do
-                                    let index = read line :: Int
-                                    if index < 1 || index > length cons
-                                        then do
-                                            putStrLn invalid_input
-                                            choose_item items
-                                        else return $ Just $ find_useable_index (index - 1) items
-                                else do
-                                    putStrLn invalid_input
-                                    choose_item items
-                where is_digit c = c >= '0' && c <= '9'
+-- Player actions: movement, attack choice, item choice
+move_player :: Coords -> GameData -> IO GameData
+move_player dir (st, sc@(pl, wd), hs, tm) = do
+                         let player = move dir pl wd
+                         let state = parse_event $ current_tile (position player) wd
+                         if position pl == position player
+                            then putStrLn "You can't go there!"
+                            else putStr ""
+                         event_handler (current_tile (position player) wd) player wd hs tm
+                where
+                    parse_event (E (Enemy {})) = Fight
+                    parse_event _              = Explore
 
 choose_attack :: [Skill] -> IO Skill
 choose_attack skills = do
@@ -144,8 +119,30 @@ choose_attack skills = do
                             else do
                                 putStrLn invalid_input
                                 choose_attack skills
-                        where is_digit c = c >= '0' && c <= '9'
 
+choose_item :: Inventory -> IO (Maybe Int)
+choose_item items = do
+                    let cons = get_consumable items
+                    if null cons
+                        then do
+                            return Nothing
+                        else do
+                            putStrLn $ print_inventory cons
+                            putStr "> "
+                            line <- getLine
+                            if all is_digit line && not (null line)
+                                then do
+                                    let index = read line :: Int
+                                    if index < 1 || index > length cons
+                                        then do
+                                            putStrLn invalid_input
+                                            choose_item items
+                                        else return $ Just $ find_useable_index (index - 1) items
+                                else do
+                                    putStrLn invalid_input
+                                    choose_item items
+
+-- Enemy actions and death handling
 enemy_application :: Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
 enemy_application en pl wd hlog tm = do
     if health en <= 0
@@ -159,6 +156,19 @@ enemy_application en pl wd hlog tm = do
             let world = update_tile (position player) (E new_enemy) wd
             output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, tm)
 
+enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
+enemy_attack pl en@(Enemy hp atk def sk _) seed = do
+    let chosen_skill = pick_random sk $ fromInteger seed
+    putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
+    case chosen_skill of
+        (Offensive _ skill _) -> do
+            let new_player = revert_passive $ skill en (apply_passive pl)
+            return (new_player, en)
+        (Defensive _ skill _) -> do
+            let new_enemy = skill en en
+            return (pl, new_enemy)
+
+-- Ability and item usage
 use_skill :: Skill -> Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
 use_skill (Offensive _ skill _) pl en wd hlog time = do
         let pass = gather_passive True (inventory pl)
@@ -183,33 +193,63 @@ apply_item idx pl wd hlog time = do
                 let new_player = itm `effect` player
                 enemy_application enemy new_player wd hlog time
 
-enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
-enemy_attack pl en@(Enemy hp atk def sk _) seed = do
-    let chosen_skill = pick_random sk $ fromInteger seed
-    putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
-    case chosen_skill of
-        (Offensive _ skill _) -> do
-            let new_player = revert_passive $ skill en (apply_passive pl)
-            return (new_player, en)
-        (Defensive _ skill _) -> do
-            let new_enemy = skill en en
-            return (pl, new_enemy)
 
-move_player :: Coords -> GameData -> IO GameData
-move_player dir (st, sc@(pl, wd), hs, tm) = do
-                         let player = move dir pl wd
-                         let state = parse_event $ current_tile (position player) wd
-                         if position pl == position player
-                            then putStrLn "You can't go there!"
-                            else putStr ""
-                         event_handler (current_tile (position player) wd) player wd hs tm
-                where 
-                    parse_event (E (Enemy {})) = Fight
-                    parse_event _              = Explore
+
+-- Helper Functions
+output :: String -> GameData -> IO GameData
+output line sc = do
+                   putStrLn line
+                   return sc
 
 is_digit :: Char -> Bool
 is_digit c = c >= '0' && c <= '9'
 
+redraw_room :: Scene -> IO()
+redraw_room (pl, wd) = do
+                        print_room pl $ get_room (fst $ position pl) wd
+
+to_lower :: String -> String
+to_lower str = [ if is_upper x then make_lower x else x | x <- str ]
+    where
+        is_upper c   = c > 'A' && c < 'Z'
+        make_lower c = toEnum (fromEnum c + 32) :: Char
+
+split :: Char -> String -> [String]
+split _ [] = [[]]
+split ch (x:xs)
+    | x == ch   = [] : split ch xs
+    | otherwise = rest $ split ch xs
+        where 
+            rest [] = [[x]]
+            rest (y:ys) = (x : y) : ys
+
+concat_right :: String -> String -> String
+concat_right base other = concat $ zipWith (\l1 l2 -> l1 ++ l2 ++ "\n") b_spl o_spl
+    where
+        b_spl = split '\n' base
+        o_spl = split '\n' other
+
+elongate_line :: String -> String
+elongate_line line = case line of
+    "hp"  -> "help"
+    "l"   -> "left"
+    "r"   -> "right"
+    "u"   -> "up"
+    "d"   -> "down"
+    "inv" -> "inventory"
+    "sks" -> "skills"
+    "sts" -> "stats"
+    "atk" -> "attack"
+    "@"   -> "attack"
+    "itm" -> "item"
+    "bk"  -> "back"
+    "ext" -> "exit"
+    "qt"  -> "quit"
+    "cbt" -> "combat"
+    "exp" -> "explore"
+    _     -> line
+
+--Interfaces
 show_inventory :: GameData -> IO GameData
 show_inventory (st, sc@(pl, wd), hs, tm) = do
     putStrLn $ print_inventory (inventory pl)
@@ -225,7 +265,7 @@ show_inventory (st, sc@(pl, wd), hs, tm) = do
             then do
                 redraw_room sc
                 return (Explore, (pl, wd), hs, tm)
-            else 
+            else
                 if all is_digit line && not (null line)
                     then do
                         let index = read line :: Int
@@ -236,7 +276,7 @@ show_inventory (st, sc@(pl, wd), hs, tm) = do
                             else do
                                 let itm = inventory pl !! (index - 1)
                                 case itm of
-                                    (Consumeable {}) -> do
+                                    (Consumable {}) -> do
                                             let player = manip_inventory pl (use_item (index - 1))
                                             let new_player = itm `effect` player
                                             putStrLn ("You used " ++ label itm ++ "!")
@@ -286,32 +326,33 @@ show_stats (st, sc@(pl, wd), hs, tm) = do
             putStrLn invalid_input
             show_stats (st, sc, hs, tm)
 
-redraw_room :: Scene -> IO()
-redraw_room (pl, wd) = do
-                        print_room pl $ get_room (fst $ position pl) wd
-
 print_room :: Entity -> Room -> IO()
 print_room pl room = do
-                putStrLn $ concat [ concat
-                                    [ el ++ "   " | (x, obj) <- row,
-                                                        let el = if (x, y) == pos
-                                                                    then show tpl else show obj]
-                                    ++ "\n\n" | (y, row) <- indexed ]
+                putStrLn $ concat_right rm inf
                 where
                     indexed = zip [0..] (map (zip [0..]) room)
                     pos     = snd $ position pl
                     tpl     = E pl
-
-to_lower :: String -> String
-to_lower str = [ if is_upper x then make_lower x else x | x <- str ]
-    where
-        is_upper c   = c > 'A' && c < 'Z'
-        make_lower c = toEnum (fromEnum c + 32) :: Char
-
-split :: String -> IO [String]
-split str = return $ words str
-
---Interfaces
+                    rm      = "+-----------------------+\n|                       |\n"
+                                ++ concat [ "|   "
+                                                ++ concat [ el ++ "   " | (x, obj) <- row,
+                                                        let el = if (x, y) == pos
+                                                                    then show tpl else show obj]
+                                ++ "|\n|                       |\n" | (y, row) <- indexed ]
+                                ++ "+-----------------------+\n"
+                    inf     =  "-----------------------+\n"
+                            ++ "   Movement:           |\n"
+                            ++ "    - left / l         |\n"
+                            ++ "    - down / d         |\n"
+                            ++ "    - right / r        |\n"
+                            ++ "    - up / u           |\n"
+                            ++ "   Information:        |\n"
+                            ++ "    - inventory / inv  |\n"
+                            ++ "    - skills / sks     |\n"
+                            ++ "    - stats / sts      |\n"
+                            ++ "    - help / hp        |\n"
+                            ++ "                       |\n"
+                            ++ "-----------------------+\n"
 
 start :: String
 start = "+-------------------------------------------------------------+\n"
@@ -321,7 +362,7 @@ start = "+-------------------------------------------------------------+\n"
      ++ "| Scattered across these wild lands are ancient chests,       |\n"
      ++ "| each brimming with mystery and magic.                       |\n"
      ++ "| Some hold treasures beyond your dreams;                     |\n"
-     ++ "| others, trials to test your strength and resolve.           |\n" 
+     ++ "| others, trials to test your strength and resolve.           |\n"
      ++ "| The question is simple:                                     |\n"
      ++ "| Will you risk it all for glory and the thrill of discovery? |\n"
      ++ "| Your path begins now, adventurer.                           |\n"
@@ -329,13 +370,14 @@ start = "+-------------------------------------------------------------+\n"
      ++ "| and prove that you are worthy of the legend.                |\n"
      ++ "|                                                             |\n"
      ++ "| Type 'start' to begin your journey.                         |\n"
+     ++ "| Type 'help' to learn more about the gameplay.               |\n"
      ++ "+-------------------------------------------------------------+\n"
 
 help :: GameData -> IO GameData
 help gd = do
     putStrLn txt
     return gd
-    where 
+    where
         txt =  "()================================()\n"
             ++ "|| _     _ _______         _____  ||\n"
             ++ "|| |_____| |______ |      |_____] ||\n"
@@ -353,9 +395,11 @@ help gd = do
 help_combat :: GameData -> IO GameData
 help_combat gd = do
     putStrLn txt
-    line <- getLine
+    putStr "> "
+    l <- getLine
+    let line = elongate_line l
     if line == "back"
-        then return gd
+        then help gd
         else do
             r <- output invalid_input gd
             help_combat r
@@ -382,9 +426,11 @@ help_combat gd = do
 help_explore :: GameData -> IO GameData
 help_explore gd = do
     putStrLn txt
-    line <- getLine
+    putStr "> "
+    l <- getLine
+    let line = elongate_line l
     if line == "back"
-        then return gd
+        then help gd
         else do
             r <- output invalid_input gd
             help_explore r
@@ -410,34 +456,14 @@ help_explore gd = do
              ++ " | Type 'back' to return to the help menu.                | \n"
              ++ " +--------------------------------------------------------+ \n"
 
-combat_screen :: Tile -> Entity -> String
-combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
-               "()========================================================()\n"
-            ++ "||          _______ _____  ______ _     _ _______         ||\n"
-            ++ "||          |______   |   |  ____ |_____|    |            ||\n"
-            ++ "||          |       __|__ |_____| |     |    |            ||\n"
-            ++ "()========================================================()\n"
-            ++ "|| Enemy Stats:              || Your Stats:               ||\n"
-            ++ "|| Name: " ++ name ++ replicate (20 - length name) ' ' ++ "||"
-            ++ " HP: " ++ show hpp ++ replicate (22 - length (show hpp)) ' ' ++ "||\n"
-            ++ "|| HP: " ++ show hp ++ replicate (22 - length (show hp)) ' ' ++ "||"
-            ++ " ATK: " ++ show atkp ++ replicate (21 - length (show atkp)) ' ' ++ "||\n"
-            ++ "|| ATK: " ++ show atk ++ replicate (21 - length (show atk)) ' ' ++ "||"
-            ++ " DEF: " ++ show defp ++ replicate (21 - length (show defp)) ' ' ++ "||\n"
-            ++ "|| DEF: " ++ show def ++ replicate (21 - length (show def)) ' ' ++ "||"
-            ++ replicate 27 ' ' ++ "||\n"
-            ++ "()========================================================()\n"
-            ++ " | What will you do?                                      | \n"
-            ++ " | - Attack                                               | \n"
-            ++ " | - Item                                                 | \n"
-            ++ " +--------------------------------------------------------+ \n"
-
 help_skills :: GameData -> IO GameData
 help_skills gd = do
     putStrLn txt
-    line <- getLine
+    putStr "> "
+    l <- getLine
+    let line = elongate_line l
     if line == "back"
-        then return gd
+        then help gd
         else do
             r <- output invalid_input gd
             help_skills r
@@ -463,9 +489,11 @@ help_skills gd = do
 help_items :: GameData -> IO GameData
 help_items gd = do
     putStrLn txt
-    line <- getLine
+    putStr "> "
+    l <- getLine
+    let line = elongate_line l
     if line == "back"
-        then return gd
+        then help gd
         else do
             r <- output invalid_input gd
             help_items r
@@ -487,11 +515,34 @@ help_items gd = do
              ++ " | Type 'back' to return to the help menu.               | \n"
              ++ " +-------------------------------------------------------+ \n"
 
+combat_screen :: Tile -> Entity -> String
+combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
+               "()========================================================()\n"
+            ++ "||          _______ _____  ______ _     _ _______         ||\n"
+            ++ "||          |______   |   |  ____ |_____|    |            ||\n"
+            ++ "||          |       __|__ |_____| |     |    |            ||\n"
+            ++ "()========================================================()\n"
+            ++ "|| Enemy Stats:              || Your Stats:               ||\n"
+            ++ "|| Name: " ++ name ++ replicate (20 - length name) ' ' ++ "||"
+            ++ " HP: " ++ show hpp ++ replicate (22 - length (show hpp)) ' ' ++ "||\n"
+            ++ "|| HP: " ++ show hp ++ replicate (22 - length (show hp)) ' ' ++ "||"
+            ++ " ATK: " ++ show atkp ++ replicate (21 - length (show atkp)) ' ' ++ "||\n"
+            ++ "|| ATK: " ++ show atk ++ replicate (21 - length (show atk)) ' ' ++ "||"
+            ++ " DEF: " ++ show defp ++ replicate (21 - length (show defp)) ' ' ++ "||\n"
+            ++ "|| DEF: " ++ show def ++ replicate (21 - length (show def)) ' ' ++ "||"
+            ++ replicate 27 ' ' ++ "||\n"
+            ++ "()========================================================()\n"
+            ++ " | What will you do?                                      | \n"
+            ++ " | - Attack                                               | \n"
+            ++ " | - Item                                                 | \n"
+            ++ " +--------------------------------------------------------+ \n"
+
+
 death :: String
 death = "+----------------------------------------------------------------+\n"
      ++ "| __   __  _____  _     _      ______  _____ _______ ______    / |\n"
      ++ "|   \\_/   |     | |     |      |     \\   |   |______ |     \\  /  |\n"
-     ++ "|    |    |_____| |_____|      |_____/ __|__ |______ |_____/ .  |\n" 
+     ++ "|    |    |_____| |_____|      |_____/ __|__ |______ |_____/ .  |\n"
      ++ "+----------------------------------------------------------------+\n"
 
 

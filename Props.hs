@@ -3,16 +3,17 @@
 module Props where
 import Objects
 
--- Map
-get_seed_tile :: Coords -> Coords -> Int
-get_seed_tile (l1, l2) (g1, g2) = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
-    where
-        seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
-        seed_local  = (l1 + l2) * (l1 + l2 + 1) `div` 2 + l1
+-- Map generation
+generate_room :: Coords -> Room
+generate_room global_coords =
+    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size - 1] ]
+                            | a <- [0..fst room_size - 1] ]
 
-get_absolute_coords :: Coords -> Coords -> Coords
-get_absolute_coords (l1, l2) (g1, g2) = (g1 * fst room_size + l1, g2 * snd room_size + l2)
+generate_map :: Coords -> WorldMap
+generate_map (x, y) =
+    [ [ generate_room (a, b) | b <- [0..x-1] ] | a <- [0..y-1] ]
 
+-- Enemy / Item selection
 generate_entity :: Coords -> Coords -> Tile
 generate_entity l@(l1, l2) g@(g1, g2)
     | randomness < 5  = O $ Chest $ select_item l g seed
@@ -23,15 +24,6 @@ generate_entity l@(l1, l2) g@(g1, g2)
         randomness = seed `mod` 100
         seed       = get_seed_tile l g
 
-select_difficulty :: Coords -> Coords -> Int -> Double
-select_difficulty l@(l1, l2) g@(g1, g2) seed = fromIntegral radius / fromIntegral max_rad
-    where
-        ms (p, q) = (p - 1, q - 1)
-        (a, b)    = get_absolute_coords l g
-        (x, y)    = get_absolute_coords (ms room_size) (ms map_size)
-        radius    = a ^ 2 + b ^ 2
-        max_rad   = x ^ 2 + y ^ 2
-
 select_enemy :: Coords -> Coords -> Int -> Entity
 select_enemy l@(l1, l2) g@(g1, g2) seed
     | coef < 0.3 = pick_random tier1_enemies seed
@@ -39,30 +31,41 @@ select_enemy l@(l1, l2) g@(g1, g2) seed
     | coef < 0.7 = pick_random tier3_enemies seed
     | otherwise  = pick_random tier4_enemies seed
     where
-        coef = select_difficulty l g seed
+        coef = select_difficulty l g
 
 select_item :: Coords -> Coords -> Int -> Item
 select_item l@(l1, l2) g@(g1, g2) seed
-    | coef < 0.3 = pick_random tier1_items seed
+    | coef < 0.2 = pick_random tier1_items seed
     | coef < 0.5 = pick_random tier2_items seed
     | coef < 0.7 = pick_random tier3_items seed
     | otherwise  = pick_random tier4_items seed
     where
-        coef = select_difficulty l g seed
+        coef = select_difficulty l g
 
-generate_room :: Coords -> Room
-generate_room global_coords =
-    [ [ generate_entity global_coords (a, b) | b <- [0..snd room_size - 1] ]
-                            | a <- [0..fst room_size - 1] ]
+select_difficulty :: Coords -> Coords -> Double
+select_difficulty l@(l1, l2) g@(g1, g2) = fromIntegral radius / fromIntegral max_rad
+    where
+        ms (p, q) = (p - 1, q - 1)
+        (a, b)    = get_absolute_coords l g
+        (x, y)    = get_absolute_coords (ms room_size) (ms map_size)
+        radius    = a ^ 2 + b ^ 2
+        max_rad   = x ^ 2 + y ^ 2
 
-generate_map :: Coords -> WorldMap
-generate_map (x, y) =
-    [ [ generate_room (a, b) | b <- [0..x-1] ] | a <- [0..y-1] ]
+-- Helper
+get_seed_tile :: Coords -> Coords -> Int
+get_seed_tile (l1, l2) (g1, g2) = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
+    where
+        seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
+        seed_local  = (l1 + l2) * (l1 + l2 + 1) `div` 2 + l1
+
+get_absolute_coords :: Coords -> Coords -> Coords
+get_absolute_coords (l1, l2) (g1, g2) = (g1 * fst room_size + l1, g2 * snd room_size + l2)
 
 -- Player
 player :: Entity
 player = Player 10 3 0 [basic_attack] [] ((0, 0), (2, 2))
 
+-- Enemy Tiers
 tier1_enemies :: [Entity]
 tier1_enemies = [imp, goblin, spirit]
 
@@ -70,7 +73,7 @@ tier2_enemies :: [Entity]
 tier2_enemies = [orc, succubus, golem]
 
 tier3_enemies :: [Entity]
-tier3_enemies = [zephyr, vampire, ephmeral]
+tier3_enemies = [zephyr, vampire, ephemeral]
 
 tier4_enemies :: [Entity]
 tier4_enemies = [chimera, dragon, demon_lord]
@@ -99,10 +102,10 @@ zephyr :: Entity
 zephyr = Enemy 10 6 4 [wind_slash, howl] "Zephyr"
 
 vampire :: Entity
-vampire = Enemy 8 5 5 [bite, suck, blood_absorbtion] "Vampire"
+vampire = Enemy 8 5 5 [bite, suck, blood_absorption] "Vampire"
 
-ephmeral :: Entity
-ephmeral = Enemy 6 5 6 [ghost_bullet, absorbtion] "Ephemeral"
+ephemeral :: Entity
+ephemeral = Enemy 6 5 6 [ghost_bullet, absorption] "Ephemeral"
 
 -- Tier 4
 chimera :: Entity
@@ -127,7 +130,7 @@ tier2_items = [skill_book_double_strike, skill_book_shred,
 
 tier3_items :: [Item]
 tier3_items = [skill_book_medium_heal, skill_book_heavy_strike, skill_book_pierce, 
-                withering_potion, defence_potion, weakness_potion,
+                withering_potion, defense_potion, weakness_potion,
                 plate_armor, silver_sword, orc_heart]
 
 tier4_items :: [Item]
@@ -146,7 +149,7 @@ long_sword :: Item
 long_sword = Passive "Long Sword" (update (-2) 0 0 []) True "Big sword. Gives 2 bonus DMG"
 
 chain_vest :: Item
-chain_vest = Passive "Chain Vest" (update 0 0 2 []) False "A knight's underarmor. Gives 2 bonus DEF."
+chain_vest = Passive "Chain Vest" (update 0 0 2 []) False "A knight's underarm. Gives 2 bonus DEF."
 
 silver_sword :: Item
 silver_sword = Passive "Silver Sword" (update (-3) 0 0 []) True "A purified blade. Gives 3 bonus ATK."
@@ -158,7 +161,7 @@ plate_armor :: Item
 plate_armor = Passive "Plate Armor" (update 0 0 3 []) False "Simple armor. Gives 3 bonus DEF."
 
 dragon_slayer :: Item
-dragon_slayer = Passive "Dragon Slayer" (update (-5) 0 0 []) True "An almyghty sword. Gives 5 bonus ATK."
+dragon_slayer = Passive "Dragon Slayer" (update (-5) 0 0 []) True "An almighty sword. Gives 5 bonus ATK."
 
 mythril_armor :: Item
 mythril_armor = Passive "Mythril Armor" (update 0 0 5 []) False "Armor made of supreme materials. Gives 5 bonus DEF"
@@ -168,65 +171,65 @@ chimera_heart = Passive "Chimera Heart" (update 5 0 0 []) False "This thing is g
 
 -- Consumables
 health_potion :: Item
-health_potion = Consumeable "Small Health Potion" 1 (update 2 0 0 []) False
+health_potion = Consumable "Small Health Potion" 1 (update 2 0 0 []) False
 
 harming_potion :: Item
-harming_potion = Consumeable "Harming Potion" 1 (update (-2) 0 0 []) True
+harming_potion = Consumable "Harming Potion" 1 (update (-2) 0 0 []) True
 
 weakness_potion :: Item
-weakness_potion = Consumeable "Weakness Potion" 1 (update 0 (-1) 0 []) True
+weakness_potion = Consumable "Weakness Potion" 1 (update 0 (-1) 0 []) True
 
-defence_potion :: Item
-defence_potion = Consumeable "Defence Potion" 1 (update 0 0 1 []) False
+defense_potion :: Item
+defense_potion = Consumable "Defense Potion" 1 (update 0 0 1 []) False
 
 medium_health_potion :: Item
-medium_health_potion = Consumeable "Medium Health Potion" 1 (update 4 0 0 []) False
+medium_health_potion = Consumable "Medium Health Potion" 1 (update 4 0 0 []) False
 
 withering_potion :: Item
-withering_potion = Consumeable "Withering Potion" 1 (update (-6) 0 0 []) True
+withering_potion = Consumable "Withering Potion" 1 (update (-6) 0 0 []) True
 
 succubus_potion :: Item
-succubus_potion = Consumeable "Weakness Potion" 1 (update 0 (-2) 0 []) True
+succubus_potion = Consumable "Weakness Potion" 1 (update 0 (-2) 0 []) True
 
 large_health_potion :: Item
-large_health_potion = Consumeable "Large Health Potion" 1 (update 10 0 0 []) False
+large_health_potion = Consumable "Large Health Potion" 1 (update 10 0 0 []) False
 
 iron_skin_potion :: Item
-iron_skin_potion = Consumeable "Iron Skin Potion" 1 (update 0 0 3 []) False
+iron_skin_potion = Consumable "Iron Skin Potion" 1 (update 0 0 3 []) False
 
 hard_flesh :: Item
-hard_flesh = Consumeable "Hard Flesh" 3 (update 0 1 0 []) False
+hard_flesh = Consumable "Hard Flesh" 3 (update 0 1 0 []) False
 
 holy_water :: Item
-holy_water = Consumeable "Holy Water" 5 (update 1 0 0 []) False
+holy_water = Consumable "Holy Water" 5 (update 1 0 0 []) False
 
 -- Skill books
 skill_book_heal :: Item
-skill_book_heal = Consumeable "Skill Book: Heal" 1 (update 0 0 0 [basic_heal]) False
+skill_book_heal = Consumable "Skill Book: Heal" 1 (update 0 0 0 [basic_heal]) False
 
 skill_book_double_strike :: Item
-skill_book_double_strike = Consumeable "Skill Book: Double Strike" 1 (update 0 0 0 [double_strike]) False
+skill_book_double_strike = Consumable "Skill Book: Double Strike" 1 (update 0 0 0 [double_strike]) False
 
 skill_book_medium_heal :: Item
-skill_book_medium_heal = Consumeable "Skill Book: Medium Heal" 1 (update 0 0 0 [medium_heal]) False
+skill_book_medium_heal = Consumable "Skill Book: Medium Heal" 1 (update 0 0 0 [medium_heal]) False
 
 skill_book_heavy_strike :: Item
-skill_book_heavy_strike = Consumeable "Skill Book: Heavy Strike" 1 (update 0 0 0 [heavy_strike]) False
+skill_book_heavy_strike = Consumable "Skill Book: Heavy Strike" 1 (update 0 0 0 [heavy_strike]) False
 
 skill_book_high_heal :: Item
-skill_book_high_heal = Consumeable "Skill Book: High Heal" 1 (update 0 0 0 [high_heal]) False
+skill_book_high_heal = Consumable "Skill Book: High Heal" 1 (update 0 0 0 [high_heal]) False
 
 skill_book_true_slash :: Item
-skill_book_true_slash = Consumeable "Skill Book: True Slash" 1 (update 0 0 0 [true_slash]) False
+skill_book_true_slash = Consumable "Skill Book: True Slash" 1 (update 0 0 0 [true_slash]) False
 
 skill_book_thousand_cuts :: Item
-skill_book_thousand_cuts = Consumeable "Skill Book: Thousand Cuts" 1 (update 0 0 0 [thousand_cuts]) False
+skill_book_thousand_cuts = Consumable "Skill Book: Thousand Cuts" 1 (update 0 0 0 [thousand_cuts]) False
 
 skill_book_shred :: Item
-skill_book_shred = Consumeable "Skill Book: Shred" 1 (update 0 0 0 [shred]) False
+skill_book_shred = Consumable "Skill Book: Shred" 1 (update 0 0 0 [shred]) False
 
 skill_book_pierce :: Item
-skill_book_pierce = Consumeable "Skill Book: Pierce" 1 (update 0 0 0 [pierce]) False
+skill_book_pierce = Consumable "Skill Book: Pierce" 1 (update 0 0 0 [pierce]) False
 
 -- Skills Player
 basic_attack :: Skill
@@ -248,7 +251,7 @@ high_heal :: Skill
 high_heal = Defensive "High Heal" (heal 2) "Powerful heal of 200% ATK"
 
 true_slash :: Skill
-true_slash = Offensive "True Slash" (deal_damage 3) "An onmipotent strike of 300% ATK"
+true_slash = Offensive "True Slash" (deal_damage 3) "An omnipotent strike of 300% ATK"
 
 thousand_cuts :: Skill
 thousand_cuts = Offensive "Thousand Cuts" (
@@ -302,8 +305,8 @@ howl = Defensive "Howl" (\user -> update 0 1 0 []) "Morale boost of 1 ATK"
 bite :: Skill
 bite = Offensive "Bite" (deal_damage 1) "Biting attack of 100% ATK"
 
-blood_absorbtion :: Skill
-blood_absorbtion = Defensive "Blood Absorbtion" (heal 1.5) "Absorb blood to heal by 150% of ATK"
+blood_absorption :: Skill
+blood_absorption = Defensive "Blood Absorption" (heal 1.5) "Absorb blood to heal by 150% of ATK"
 
 suck :: Skill
 suck = Offensive "Suck" (\user -> update 3 1 0 []) "Suck opponent's blood to take 3 HP and 1 ATK"
@@ -311,8 +314,8 @@ suck = Offensive "Suck" (\user -> update 3 1 0 []) "Suck opponent's blood to tak
 ghost_bullet :: Skill
 ghost_bullet = Offensive "Ghost Bullet" (\user -> update 4 0 1 []) "An invisible attack reducing HP by 4 and DEF by 1"
 
-absorbtion :: Skill
-absorbtion = Defensive "Absorbtion" (heal 1) "Basic healing of 100% ATK"
+absorption :: Skill
+absorption = Defensive "Absorption" (heal 1) "Basic healing of 100% ATK"
 
 growth :: Skill
 growth = Defensive "Growth" (\user -> update 1 1 1 []) "Grow in all aspects!"

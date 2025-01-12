@@ -15,7 +15,7 @@ type Time = Integer                       -- Time type for random number generat
 type Damage = Int                         -- Represents attack damage
 type Health = Damage                      -- Alias for health, as it relates to damage
 type Attack = Damage                      -- Alias for attack stats
-type Defence = Damage                     -- Alias for defense stats
+type Defense = Damage                     -- Alias for defense stats
 type Inventory = [Item]                   -- List of items held by an entity
 type Coords = (Int, Int)                  -- A pair representing coordinates (x, y)
 type Position = (Coords, Coords)          -- Global and local coordinates
@@ -30,11 +30,11 @@ data Skill = Offensive { title :: String, func :: Ability, desc :: String }
            | Defensive { title :: String, func :: Ability, desc :: String }
 
 -- The main game entities: enemies and the player
-data Entity = Enemy  { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], name :: String }
-            | Player { health :: Health, attack :: Attack, defence :: Defence, skills :: [Skill], inventory :: Inventory, position :: Position }
+data Entity = Enemy  { health :: Health, attack :: Attack, defense :: Defense, skills :: [Skill], name :: String }
+            | Player { health :: Health, attack :: Attack, defense :: Defense, skills :: [Skill], inventory :: Inventory, position :: Position }
 
 -- Items the player uses
-data Item = Consumeable { label :: String, charges :: Int, effect :: Hit, is_offensive :: Bool }
+data Item = Consumable { label :: String, charges :: Int, effect :: Hit, is_offensive :: Bool }
           | Passive     { label :: String, effect :: Hit, is_offensive :: Bool, info :: String }
 
 -- Objects present on the map
@@ -51,33 +51,29 @@ type WorldMap = [[Room]]
 
 -- Redefine classes to provide custom string representations
 instance Show Skill where
-    show :: Skill -> String
     show (Offensive t _ _) = "Attack Skill: "  ++ t
-    show (Defensive t _ _) = "Defence Skill: " ++ t
+    show (Defensive t _ _) = "Defense Skill: " ++ t
 
 instance Show Item where
-    show :: Item -> String
-    show (Consumeable l c _ _) = l ++ " | Charges: " ++ show c
+    show (Consumable l c _ _) = l ++ " | Charges: " ++ show c
     show (Passive l _ _ _)       = show l
 
 
 instance Show Entity where
-    show :: Entity -> String
-    show (Enemy h a d s n)    = "Name: " ++ n ++ ['\n']
+    show (Enemy h a d s n)    = "Name: " ++ n ++ "\n"
                              ++ "Health: " ++ show h
                              ++ " | Attack: " ++ show a
-                             ++ " | Defence: " ++ show d ++ ['\n']
+                             ++ " | Defense: " ++ show d ++ "\n"
                              ++ "Skills: " ++ show (map title s)
     show (Player h a d _ _ _) = "+--------------------+\n"
                              ++ "| Your Stats:        |\n"
                              ++ "+--------------------+\n"
                              ++ "| Health: " ++ show h ++ replicate (10 - length (show h)) ' ' ++ " |\n"
                              ++ "| Attack: " ++ show a ++ replicate (10 - length (show a)) ' ' ++" |\n"
-                             ++ "| Defence: " ++ show d ++ replicate (9 - length (show d)) ' ' ++ " |\n"
+                             ++ "| Defense: " ++ show d ++ replicate (9 - length (show d)) ' ' ++ " |\n"
                              ++ "+--------------------+"
 
 instance Show Tile where
-    show :: Tile -> String
     show (E (Enemy {}))  = "E"
     show (E (Player {})) = "P"
     show (O (Chest {}))  = "C"
@@ -85,37 +81,35 @@ instance Show Tile where
     show (O Wall)        = "#"
 
 instance Eq Item where
-    (==) :: Item -> Item -> Bool
-    (Consumeable l1 _ _ _) == (Consumeable l2 _ _ _) = l1 == l2
+    (Consumable l1 _ _ _) == (Consumable l2 _ _ _) = l1 == l2
     (Passive l1 _ _ _)       == (Passive l2 _ _ _)   = l1 == l2
     _                      == _                      = False
 
 instance Eq Skill where
-    (==) :: Skill -> Skill -> Bool
     (Offensive t1 _ _) == (Offensive t2 _ _) = t1 == t2
     (Defensive t1 _ _) == (Defensive t2 _ _) = t1 == t2
     _                == _                = False
 
 -- Entity updater
-update :: Health -> Attack -> Defence -> [Skill] -> Entity -> Entity
+update :: Health -> Attack -> Defense -> [Skill] -> Entity -> Entity
 update hmod amod dmod nsk (Enemy hp atk def sk nm) =
         Enemy  (hp + hmod') (atk + amod) def' (gain_skill nsk sk) nm
         where
-            hmod' = defence_bonus hmod def'
+            hmod' = defense_bonus hmod def'
             def'  = def + dmod
 
 update hmod amod dmod nsk (Player hp atk def sk inv cord) =
         Player (hp + hmod') (atk + amod) def' (gain_skill nsk sk) inv cord
         where
-            hmod' = defence_bonus hmod def'
+            hmod' = defense_bonus hmod def'
             def'  = def + dmod
 
-defence_bonus :: Health -> Defence -> Health
-defence_bonus dmg def
+defense_bonus :: Health -> Defense -> Health
+defense_bonus dmg def
     | dmg < 0 = min 0 $ dmg + def
     | otherwise = dmg
 
-
+-- Passive item functions. Passives are applied and removed after each turn
 apply_passive :: Entity -> Entity
 apply_passive pl = gather_passive False (inventory pl) pl
 
@@ -128,12 +122,12 @@ revert_passive pl@(Player hp atk def sk inv cords) =
         datk = atk' - atk
         ddef = def' - def
 
+-- A safe skill gain function
 gain_skill :: [Skill] -> [Skill] -> [Skill]
 gain_skill [] skills = skills
 gain_skill (s:ss) skills = if s `elem` skills
                             then gain_skill ss skills
                             else gain_skill ss $ s : skills
-
 
 -- Base Skills
 heal :: Effect
@@ -207,8 +201,8 @@ is_passive _            = False
 get_passive :: Inventory -> Inventory
 get_passive = filter is_passive
 
-get_consumeable :: Inventory -> Inventory
-get_consumeable = filter $ not . is_passive
+get_consumable :: Inventory -> Inventory
+get_consumable = filter $ not . is_passive
 
 gather_passive :: Bool -> Inventory -> Hit
 gather_passive is_off inv = foldr (.) id selected
@@ -220,14 +214,14 @@ gain_item itm inv = inv ++ [itm]
 clear_used :: Inventory -> Inventory
 clear_used = filter $ not . is_used
     where
-        is_used (Consumeable _ charges _ _) = charges == 0
+        is_used (Consumable _ charges _ _) = charges == 0
         is_used _                           = False
 
 use_item :: Int -> Inventory -> Inventory
 use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx + 1) inv
     where
         itm   = inv !! idx
-        after (Consumeable l c e o) = Consumeable l (c - 1) e o
+        after (Consumable l c e o) = Consumable l (c - 1) e o
         after itm                 = itm
 
 find_useable_index :: Int -> Inventory -> Int
@@ -238,19 +232,20 @@ find_useable_index index items
         filtered = filter (not . is_passive . snd) (zip [0..] items)
 
 -- Random number generation
-random_index :: Int -> Time -> Int
-random_index len seed = if len <= 1
-                            then 0
-                            else fromIntegral $ rand seed `mod` toInteger len
+-- Using the formula in this article: 
+-- https://en.wikipedia.org/wiki/Random_number_generation
+rand :: Time -> Time
+rand seed = (1103515245 * seed + 12345) `mod` 2147483647
+
 
 pick_random :: [a] -> Int -> a
 pick_random lst seed = lst !! idx
     where idx = random_index (length lst) $ toInteger seed
 
--- Using the formula in this article: 
--- https://en.wikipedia.org/wiki/Random_number_generation
-rand :: Time -> Time
-rand seed = (1103515245 * seed + 12345) `mod` 2147483647
+random_index :: Int -> Time -> Int
+random_index len seed = if len <= 1
+                            then 0
+                            else fromIntegral $ rand seed `mod` toInteger len
 
 random_range :: Time -> Integer -> Integer -> Time
 random_range seed a b = if b - a <= 0 then 0 else (rand seed `mod` (b - a)) + a
@@ -269,6 +264,7 @@ get_tile pos@(x, y) room = room !! clamp_y !! clamp_x
                                 clamp_x = x `mod` fst room_size
                                 clamp_y = y `mod` snd room_size
 
+-- Tile actions
 current_tile :: Position -> WorldMap -> Tile
 current_tile (global, local) wd = get_tile local $ get_room global wd
 
@@ -282,9 +278,6 @@ update_tile ((g1, g2), (l1, l2)) what wd = take g2 wd ++
                                         ++ drop (l2 + 1) (wd !! g2 !! g1)]
                                     ++ drop (g1 + 1) (wd !! g2)]
                                 ++ drop (g2 + 1) wd
-
-is_inside :: Coords -> Coords -> Bool
-is_inside (x, y) (a, b) = x < a && y < b && x >= 0 && y >=0
 
 -- Movement
 direct :: Coords -> Coords -> Coords
@@ -306,8 +299,12 @@ move dir pl@(Player hp atk def sk inv (global, local)) wd
         new_global = global `direct` dir
         clamp (x, y)  = (x `mod` fst room_size, y `mod` snd room_size)
 
+-- Helper functions for room checks
 can_step :: Coords -> Coords -> WorldMap -> Bool
 can_step local global wd = not $ is_wall (get_tile local $ get_room global wd)
     where
         is_wall (O Wall) = True
         is_wall _        = False
+
+is_inside :: Coords -> Coords -> Bool
+is_inside (x, y) (a, b) = x < a && y < b && x >= 0 && y >=0

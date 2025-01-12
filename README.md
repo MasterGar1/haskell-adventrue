@@ -1,7 +1,7 @@
 # Haskell Adventure
 
 ## Overview
-Haskell Adventure is a text-based RPG game where you explore a world, encounter enemies, and collect items. The game is written in Haskell and demonstrates various functional programming concepts.
+Haskell Adventure is a text-based RPG game where you explore a world, encounter enemies, and collect items.
 
 ## Prerequisites
 - [GHC (Glasgow Haskell Compiler)](https://www.haskell.org/ghc/) - Make sure you have GHC installed on your system.
@@ -14,14 +14,14 @@ Haskell Adventure is a text-based RPG game where you explore a world, encounter 
     cd haskell-adventure
     ```
 
-2. **Build the project:**
+2. **Compile the project:**
     ```sh
-    cabal build
+    ghci Main.hs
     ```
 
 3. **Run the game:**
     ```sh
-    cabal run
+    main
     ```
 
 ## How to Play

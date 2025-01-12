@@ -74,8 +74,8 @@ parse_input line st sc@(pl, wd) hs tm
 
 -- Checks if an event is encountered while player is exploring
 event_handler :: Tile -> Entity -> WorldMap -> History -> Time -> IO GameData
-event_handler (E (Enemy hp atk def sk name)) pl wd hlog time = do
-    putStrLn $ "You encountered an enemy: " ++ name ++ "!"
+event_handler (E (Enemy _ _ _ _ nm)) pl wd hlog time = do
+    putStrLn $ "You encountered an enemy: " ++ nm ++ "!"
     output (combat_screen (current_tile (position pl) wd) pl) (Fight, (pl, wd), hlog, time)
 
 event_handler (O (Chest item)) pl wd hlog time = do
@@ -91,34 +91,30 @@ event_handler _ pl wd hlog time = do
 
 -- Player actions: movement, attack choice, item choice
 move_player :: Coords -> GameData -> IO GameData
-move_player dir (st, sc@(pl, wd), hs, tm) = do
+move_player dir (_, (pl, wd), hs, tm) = do
                          let player = move dir pl wd
-                         let state = parse_event $ current_tile (position player) wd
                          if position pl == position player
                             then putStrLn "You can't go there!"
                             else putStr ""
                          event_handler (current_tile (position player) wd) player wd hs tm
-                where
-                    parse_event (E (Enemy {})) = Fight
-                    parse_event _              = Explore
 
 choose_attack :: [Skill] -> IO Skill
-choose_attack skills = do
-                        putStrLn $ print_skills skills
+choose_attack sks = do
+                        putStrLn $ print_skills sks
                         putStr "> "
                         line <- getLine
                         if all is_digit line && not (null line)
                             then do
                                 let index = read line :: Int
-                                if index < 1 || index > length skills
+                                if index < 1 || index > length sks
                                     then do
                                         putStrLn invalid_input
-                                        choose_attack skills
+                                        choose_attack sks
                                     else
-                                        return $ skills !! (index - 1)
+                                        return $ sks !! (index - 1)
                             else do
                                 putStrLn invalid_input
-                                choose_attack skills
+                                choose_attack sks
 
 choose_item :: Inventory -> IO (Maybe Int)
 choose_item items = do
@@ -157,7 +153,7 @@ enemy_application en pl wd hlog tm = do
             output (combat_screen (current_tile (position player) world) player) (Fight, (player, world), hlog, tm)
 
 enemy_attack :: Entity -> Entity -> Time -> IO (Entity, Entity)
-enemy_attack pl en@(Enemy hp atk def sk _) seed = do
+enemy_attack pl en@(Enemy _sssssss _ _ sk _) seed = do
     let chosen_skill = pick_random sk $ fromInteger seed
     putStrLn $ "The enemy used " ++ title chosen_skill ++ "!"
     case chosen_skill of
@@ -167,6 +163,7 @@ enemy_attack pl en@(Enemy hp atk def sk _) seed = do
         (Defensive _ skill _) -> do
             let new_enemy = skill en en
             return (pl, new_enemy)
+enemy_attack _ _ _ = error "Not an enemy!"
 
 -- Ability and item usage
 use_skill :: Skill -> Entity -> Entity -> WorldMap -> [String] -> Time -> IO GameData
@@ -188,7 +185,7 @@ apply_item idx pl wd hlog time = do
             then do
                 let new_enemy = itm `effect` enemy
                 let world = update_tile (position player) (E new_enemy) wd
-                enemy_application new_enemy player wd hlog time
+                enemy_application new_enemy player world hlog time
             else do
                 let new_player = itm `effect` player
                 enemy_application enemy new_player wd hlog time
@@ -290,7 +287,7 @@ show_inventory (st, sc@(pl, wd), hs, tm) = do
                             show_inventory (st, sc, hs, tm)
 
 show_skills :: GameData -> IO GameData
-show_skills (st, sc@(pl, wd), hs, tm) = do
+show_skills (st, sc@(pl, _), hs, tm) = do
     putStrLn $ print_skills (skills pl)
     putStrLn "Type 'back' to return or skill number to see info!"
     line <- getLine
@@ -314,7 +311,7 @@ show_skills (st, sc@(pl, wd), hs, tm) = do
                     show_skills (st, sc, hs, tm)
 
 show_stats :: GameData -> IO GameData
-show_stats (st, sc@(pl, wd), hs, tm) = do
+show_stats (st, sc@(pl, _), hs, tm) = do
     print pl
     putStrLn "Type back to return!"
     line <- getLine
@@ -516,14 +513,14 @@ help_items gd = do
              ++ " +-------------------------------------------------------+ \n"
 
 combat_screen :: Tile -> Entity -> String
-combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
+combat_screen (E (Enemy hp atk def _ nm)) (Player hpp atkp defp _ _ _) =
                "()========================================================()\n"
             ++ "||          _______ _____  ______ _     _ _______         ||\n"
             ++ "||          |______   |   |  ____ |_____|    |            ||\n"
             ++ "||          |       __|__ |_____| |     |    |            ||\n"
             ++ "()========================================================()\n"
             ++ "|| Enemy Stats:              || Your Stats:               ||\n"
-            ++ "|| Name: " ++ name ++ replicate (20 - length name) ' ' ++ "||"
+            ++ "|| Name: " ++ nm ++ replicate (20 - length nm) ' ' ++ "||"
             ++ " HP: " ++ show hpp ++ replicate (22 - length (show hpp)) ' ' ++ "||\n"
             ++ "|| HP: " ++ show hp ++ replicate (22 - length (show hp)) ' ' ++ "||"
             ++ " ATK: " ++ show atkp ++ replicate (21 - length (show atkp)) ' ' ++ "||\n"
@@ -536,6 +533,7 @@ combat_screen (E (Enemy hp atk def sk name)) (Player hpp atkp defp skp _ _) =
             ++ " | - Attack                                               | \n"
             ++ " | - Item                                                 | \n"
             ++ " +--------------------------------------------------------+ \n"
+combat_screen _ _ = "Invalid arguments!"
 
 
 death :: String

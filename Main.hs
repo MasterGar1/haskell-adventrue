@@ -13,7 +13,7 @@ main = do
 
 -- Game loop
 game_loop :: State -> Scene -> History -> Time -> IO()
-game_loop state scene@(actor, world) history time = do
+game_loop state scene history time = do
         putStr "> "
         line <- getLine
         let input = to_lower line

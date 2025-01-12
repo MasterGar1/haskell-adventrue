@@ -121,13 +121,14 @@ revert_passive pl@(Player hp atk def sk inv cords) =
         dhp  = hp' - hp
         datk = atk' - atk
         ddef = def' - def
+revert_passive _ = error "Not a player!"
 
 -- A safe skill gain function
 gain_skill :: [Skill] -> [Skill] -> [Skill]
-gain_skill [] skills = skills
-gain_skill (s:ss) skills = if s `elem` skills
-                            then gain_skill ss skills
-                            else gain_skill ss $ s : skills
+gain_skill [] sks = sks
+gain_skill (s:ss) sks = if s `elem` sks
+                            then gain_skill ss sks
+                            else gain_skill ss $ s : sks
 
 -- Base Skills
 heal :: Effect
@@ -147,14 +148,14 @@ deal_damage mult user = update amount 0 0 []
 
 -- Print functions
 print_skills :: [Skill] -> String
-print_skills skills = "+" ++ replicate (spaces + 4) '-' ++ "+\n"
+print_skills sks = "+" ++ replicate (spaces + 4) '-' ++ "+\n"
     ++ "| Skills:" ++ replicate (spaces - 5) ' ' ++ " |\n"
     ++ "+" ++ replicate (spaces + 4) '-' ++ "+\n"
     ++ unlines (zipWith (\x y -> "| " ++ show x ++ ". " ++ show y 
-                ++ replicate (spaces - length (show y) - length (show x)) ' ' ++ " |") [1..] skills)
+                ++ replicate (spaces - length (show y) - length (show x)) ' ' ++ " |") [1..] sks)
     ++ "+" ++ replicate (spaces + 4) '-' ++ "+"
     where
-        spaces = maximum (map (length . show) skills) + maximum (map (length . show) [1..(length skills)])
+        spaces = maximum (map (length . show) sks) + maximum (map (length . show) [1..(length sks)])
 
 print_inventory :: Inventory -> String
 print_inventory [] = "Inventory is empty."
@@ -168,12 +169,12 @@ print_inventory inv = "+" ++ replicate (spaces + 4) '-' ++ "+\n"
         spaces = maximum (map (length . show) inv) + maximum (map (length . show) [1..(length inv)])
 
 print_item :: Item -> String
-print_item (Passive name _ _ desc) = "+" ++ replicate (spaces + 2) '-' ++ "+\n"
-                                  ++ "| Item: " ++ name ++ replicate (spaces - 6 - length name) ' ' ++ " |\n"
-                                  ++ "| " ++ desc ++ replicate (spaces - length desc) ' ' ++ " |\n"
+print_item (Passive nm _ _ des) = "+" ++ replicate (spaces + 2) '-' ++ "+\n"
+                                  ++ "| Item: " ++ nm ++ replicate (spaces - 6 - length nm) ' ' ++ " |\n"
+                                  ++ "| " ++ des ++ replicate (spaces - length des) ' ' ++ " |\n"
                                   ++ "+" ++ replicate (spaces + 2) '-' ++ "+\n"
     where 
-        spaces = max (length desc) (length name + 6)
+        spaces = max (length des) (length nm + 6)
 print_item itm                     = show itm
 
 
@@ -193,6 +194,7 @@ is_dead (Enemy hp _ _ _ _)    = hp <= 0
 -- Inventory Operations
 manip_inventory :: Entity -> (Inventory -> Inventory) -> Entity
 manip_inventory (Player hp atk def sk inv cord) f = Player hp atk def sk (f inv) cord
+manip_inventory e                               _ = e
 
 is_passive :: Item -> Bool
 is_passive (Passive {}) = True
@@ -214,7 +216,7 @@ gain_item itm inv = inv ++ [itm]
 clear_used :: Inventory -> Inventory
 clear_used = filter $ not . is_used
     where
-        is_used (Consumable _ charges _ _) = charges == 0
+        is_used (Consumable _ chr _ _) = chr == 0
         is_used _                           = False
 
 use_item :: Int -> Inventory -> Inventory
@@ -222,7 +224,7 @@ use_item idx inv = clear_used $ take idx inv ++ [after itm] ++ drop (idx + 1) in
     where
         itm   = inv !! idx
         after (Consumable l c e o) = Consumable l (c - 1) e o
-        after itm                 = itm
+        after it                  = it
 
 find_useable_index :: Int -> Inventory -> Int
 find_useable_index index items
@@ -252,14 +254,14 @@ random_range seed a b = if b - a <= 0 then 0 else (rand seed `mod` (b - a)) + a
 
 -- If pos is outside world, it is clamped inside to the nearest room
 get_room :: Coords -> WorldMap -> Room
-get_room pos@(x, y) world = world !! clamp_y !! clamp_x
+get_room (x, y) world = world !! clamp_y !! clamp_x
                             where
                                 clamp_x = max 0 $ min x (fst room_size - 1)
                                 clamp_y = max 0 $ min y (snd room_size - 1)
 
 -- If pos is outside, it wraps around the room
 get_tile :: Coords -> Room -> Tile
-get_tile pos@(x, y) room = room !! clamp_y !! clamp_x
+get_tile (x, y) room = room !! clamp_y !! clamp_x
                             where
                                 clamp_x = x `mod` fst room_size
                                 clamp_y = y `mod` snd room_size
@@ -298,6 +300,7 @@ move dir pl@(Player hp atk def sk inv (global, local)) wd
         new_local  = local `direct` dir
         new_global = global `direct` dir
         clamp (x, y)  = (x `mod` fst room_size, y `mod` snd room_size)
+move _ _ _ = error "Not a player!"
 
 -- Helper functions for room checks
 can_step :: Coords -> Coords -> WorldMap -> Bool

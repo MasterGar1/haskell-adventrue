@@ -15,7 +15,7 @@ generate_map (x, y) =
 
 -- Enemy / Item selection
 generate_entity :: Coords -> Coords -> Tile
-generate_entity l@(l1, l2) g@(g1, g2)
+generate_entity l g
     | randomness < 5  = O $ Chest $ select_item l g seed
     | randomness < 13 = O Wall
     | randomness < 18 = E $ select_enemy l g seed
@@ -25,7 +25,7 @@ generate_entity l@(l1, l2) g@(g1, g2)
         seed       = get_seed_tile l g
 
 select_enemy :: Coords -> Coords -> Int -> Entity
-select_enemy l@(l1, l2) g@(g1, g2) seed
+select_enemy l g seed
     | coef < 0.3 = pick_random tier1_enemies seed
     | coef < 0.5 = pick_random tier2_enemies seed
     | coef < 0.7 = pick_random tier3_enemies seed
@@ -34,7 +34,7 @@ select_enemy l@(l1, l2) g@(g1, g2) seed
         coef = select_difficulty l g
 
 select_item :: Coords -> Coords -> Int -> Item
-select_item l@(l1, l2) g@(g1, g2) seed
+select_item l g seed
     | coef < 0.2 = pick_random tier1_items seed
     | coef < 0.5 = pick_random tier2_items seed
     | coef < 0.7 = pick_random tier3_items seed
@@ -43,7 +43,7 @@ select_item l@(l1, l2) g@(g1, g2) seed
         coef = select_difficulty l g
 
 select_difficulty :: Coords -> Coords -> Double
-select_difficulty l@(l1, l2) g@(g1, g2) = fromIntegral radius / fromIntegral max_rad
+select_difficulty l g = fromIntegral radius / fromIntegral max_rad
     where
         ms (p, q) = (p - 1, q - 1)
         (a, b)    = get_absolute_coords l g
@@ -263,10 +263,10 @@ thousand_cuts = Offensive "Thousand Cuts" (
             ) "An endless barrage of 10 strikes of 90% ATK"
 
 shred :: Skill
-shred = Offensive "Shred" (\user -> update 0 0 1 []) "Break the enemy's DEF by 1"
+shred = Offensive "Shred" (\_ -> update 0 0 1 []) "Break the enemy's DEF by 1"
 
 pierce :: Skill
-pierce = Offensive "Pierce" (\user -> update 0 0 3 []) "Crush the enemy's protection by 3 DEF"
+pierce = Offensive "Pierce" (\_ -> update 0 0 3 []) "Crush the enemy's protection by 3 DEF"
 
 -- Skills Enemies
 claw_strike :: Skill
@@ -282,13 +282,13 @@ possession :: Skill
 possession = Offensive "Possession" (deal_damage 1.5) "Mental attack of 150% ATK"
 
 hardening :: Skill
-hardening = Defensive "Hardening" (\user -> update 0 0 1 []) "Protection spell + 1 DEF"
+hardening = Defensive "Hardening" (\_ -> update 0 0 1 []) "Protection spell + 1 DEF"
 
 recovery :: Skill
 recovery = Defensive "Recovery" (heal 0.7) "Small recovery of 70% ATK"
 
 charm :: Skill
-charm = Offensive "Charm" (\user -> update 0 1 0 []) "Reduction of 1 ATK"
+charm = Offensive "Charm" (\_ -> update 0 1 0 []) "Reduction of 1 ATK"
 
 strike :: Skill
 strike = Offensive "Strike" (deal_damage 1) "Basic attack of 100% ATK"
@@ -300,7 +300,7 @@ wind_slash :: Skill
 wind_slash = Offensive "Wind Slash" (deal_damage 1) "Wind volley of 100% ATK"
 
 howl :: Skill
-howl = Defensive "Howl" (\user -> update 0 1 0 []) "Morale boost of 1 ATK"
+howl = Defensive "Howl" (\_ -> update 0 1 0 []) "Morale boost of 1 ATK"
 
 bite :: Skill
 bite = Offensive "Bite" (deal_damage 1) "Biting attack of 100% ATK"
@@ -309,16 +309,16 @@ blood_absorption :: Skill
 blood_absorption = Defensive "Blood Absorption" (heal 1.5) "Absorb blood to heal by 150% of ATK"
 
 suck :: Skill
-suck = Offensive "Suck" (\user -> update 3 1 0 []) "Suck opponent's blood to take 3 HP and 1 ATK"
+suck = Offensive "Suck" (\_ -> update 3 1 0 []) "Suck opponent's blood to take 3 HP and 1 ATK"
 
 ghost_bullet :: Skill
-ghost_bullet = Offensive "Ghost Bullet" (\user -> update 4 0 1 []) "An invisible attack reducing HP by 4 and DEF by 1"
+ghost_bullet = Offensive "Ghost Bullet" (\_ -> update 4 0 1 []) "An invisible attack reducing HP by 4 and DEF by 1"
 
 absorption :: Skill
 absorption = Defensive "Absorption" (heal 1) "Basic healing of 100% ATK"
 
 growth :: Skill
-growth = Defensive "Growth" (\user -> update 1 1 1 []) "Grow in all aspects!"
+growth = Defensive "Growth" (\_ -> update 1 1 1 []) "Grow in all aspects!"
 
 fire_breath :: Skill
 fire_breath = Offensive "Fire Breath" (deal_damage 2) "Breathe fire to deal 200% of ATK"
@@ -327,7 +327,7 @@ demon_claw :: Skill
 demon_claw = Offensive "Demon Claw" (deal_damage 1) "Tear all apart with 100% of ATK"
 
 curse :: Skill
-curse = Offensive "Curse" (\user -> update 0 1 1 []) "Weaken your opponent by 1 DEF and 1 ATK"
+curse = Offensive "Curse" (\_ -> update 0 1 1 []) "Weaken your opponent by 1 DEF and 1 ATK"
 
 greater_recovery :: Skill
 greater_recovery = Defensive "Greater Recovery" (heal 1) "Heal a lot by 100% of ATK"

@@ -5,7 +5,6 @@ Haskell Adventure is a text-based RPG game where you explore a world, encounter 
 
 ## Prerequisites
 - [GHC (Glasgow Haskell Compiler)](https://www.haskell.org/ghc/) - Make sure you have GHC installed on your system.
-- [Cabal](https://www.haskell.org/cabal/) - A system for building and packaging Haskell libraries and programs.
 
 ## Setup
 1. **Clone the repository:**

@@ -53,10 +53,9 @@ select_difficulty l g = fromIntegral radius / fromIntegral max_rad
 
 -- Helper
 get_seed_tile :: Coords -> Coords -> Int
-get_seed_tile (l1, l2) (g1, g2) = (seed_global + seed_local) * (seed_global + seed_local + 1) `div` 2 + seed_local
+get_seed_tile l g = (x + y) * (x + y + 1) `div` 2 + y
     where
-        seed_global = (g1 + g2) * (g1 + g2 + 1) `div` 2 + g2
-        seed_local  = (l1 + l2) * (l1 + l2 + 1) `div` 2 + l1
+        (x, y) = get_absolute_coords l g
 
 get_absolute_coords :: Coords -> Coords -> Coords
 get_absolute_coords (l1, l2) (g1, g2) = (g1 * fst room_size + l1, g2 * snd room_size + l2)

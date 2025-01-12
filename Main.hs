@@ -5,6 +5,9 @@ import Objects
 import Input
 import Props
 
+play :: IO()
+play = main
+
 -- Main function + initiation of game loop
 main :: IO()
 main = do
